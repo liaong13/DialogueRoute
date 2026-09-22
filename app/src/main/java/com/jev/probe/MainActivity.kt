@@ -1,11 +1,13 @@
 package com.jev.probe
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
@@ -14,7 +16,9 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.jev.probe.core.PowerSetup
 import com.jev.probe.core.Prefs
 import kotlin.math.roundToInt
 
@@ -69,10 +73,11 @@ class MainActivity : AppCompatActivity() {
         val a11y = isA11yEnabled()
         val overlay = Settings.canDrawOverlays(this)
         val key = prefs.hasKey()   // judge route key: the one analysis cannot run without
-        val ready = a11y && overlay && key
+        val batteryExempt = isBatteryOptimizationExempt()
+        val verdict = PowerSetup.verdict(a11y, overlay, key, batteryExempt)
 
         // Readiness card
-        container.addView(statusCard(ready, a11y, overlay, key))
+        container.addView(statusCard(verdict))
 
         // Permission checklist
         container.addView(sectionLabel("权限设置"))
@@ -82,10 +87,15 @@ class MainActivity : AppCompatActivity() {
         container.addView(permCard("悬浮窗权限", "在聊天窗口上方显示分析卡片", overlay) {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
         })
-        container.addView(permCard("自启动 + 省电无限制", "小米/HyperOS 必做，否则服务被冻结、读不到消息", null) {
-            runCatching {
-                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-            }
+        container.addView(sectionLabel("后台运行建议"))
+        container.addView(permCard("忽略系统电池优化", "可减少待机限制，不代表厂商后台限制已解除", batteryExempt) {
+            openBatterySettings()
+        })
+        container.addView(permCard("厂商省电策略", "小米/HyperOS 等系统请另行检查「省电无限制」（本项无法自动检测）", null) {
+            openAppDetails()
+        })
+        container.addView(permCard("自启动", "部分 ROM 重启后不会主动拉起服务（本项无法自动检测）", null) {
+            openAutostartSettings()
         })
 
         // Actions
@@ -105,17 +115,27 @@ class MainActivity : AppCompatActivity() {
 
     // ---------------------------------------------------------------- cards
 
-    private fun statusCard(ready: Boolean, a11y: Boolean, overlay: Boolean, key: Boolean): View {
+    private fun statusCard(v: PowerSetup.Readiness): View {
         val c = cardBox()
         val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(dot(if (ready) green else red).apply {
+        head.addView(dot(if (v.ready) green else red).apply {
             (layoutParams as LinearLayout.LayoutParams).rightMargin = dp(10)
         })
-        head.addView(text(if (ready) "已就绪，可以用了" else "尚未就绪", 16f, if (ready) green else ink, bold = true))
+        head.addView(text(if (v.ready) "基础配置已完成" else "尚未就绪", 16f, if (v.ready) green else ink, bold = true))
         c.addView(head)
-        c.addView(checkLine("无障碍", a11y))
-        c.addView(checkLine("悬浮窗", overlay))
-        c.addView(checkLine("密钥", key, okWord = "已设", noWord = "未设"))
+        c.addView(checkLine("无障碍", v.accessibility))
+        c.addView(checkLine("悬浮窗", v.overlay))
+        c.addView(checkLine("密钥", v.key, okWord = "已设", noWord = "未设"))
+        if (v.missing.isNotEmpty()) {
+            c.addView(text("还差：" + v.missing.joinToString("、"), 12f, red).apply {
+                setPadding(0, dp(8), 0, 0)
+            })
+        }
+        if (v.recommendations.isNotEmpty()) {
+            c.addView(text("后台运行建议：" + v.recommendations.joinToString("、"), 12f, sub).apply {
+                setPadding(0, dp(8), 0, 0)
+            })
+        }
         // History recording is opt-in (off by default). Mention it here, never block on it.
         if (!prefs.contextEnabled) {
             c.addView(text("关联上下文未开启，可在设置里开启", 12f, sub).apply {
@@ -148,7 +168,12 @@ class MainActivity : AppCompatActivity() {
         left.addView(text(desc, 12f, sub).apply { setPadding(0, dp(3), 0, 0) })
         if (granted == true) left.addView(text("✓ 已开启", 12f, green, bold = true).apply { setPadding(0, dp(4), 0, 0) })
         row.addView(left)
-        row.addView(btn(if (granted == true) "已开启" else "去开启", granted != true, onClick))
+        val buttonLabel = when (granted) {
+            true -> "已开启"
+            false -> "去开启"
+            null -> "去检查"
+        }
+        row.addView(btn(buttonLabel, granted != true, onClick))
         c.addView(row)
         return c
     }
@@ -218,6 +243,49 @@ class MainActivity : AppCompatActivity() {
     private fun roundBg(radius: Int, color: Int, stroke: Boolean = false) = GradientDrawable().apply {
         cornerRadius = radius.toFloat(); setColor(color)
         if (stroke) setStroke(dp(1), accent)
+    }
+
+    // ------------------------------------------------------------ OEM setup
+
+    // 此 API 只查询系统电池优化白名单，不能判断厂商省电策略或服务是否存活。
+    private fun isBatteryOptimizationExempt(): Boolean {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    // 仅处理设置页面无法打开的情况；用户拒绝授权时保留其选择。
+    private fun openBatterySettings() {
+        val asked = runCatching {
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:${packageName}")))
+        }.isSuccess
+        if (asked) return
+        runCatching { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+            .onFailure { openAppDetails() }
+    }
+
+    // 厂商入口可能缺失或禁止外部启动，失败时逐个尝试，最终引导到应用详情。
+    private fun openAutostartSettings() {
+        for (route in PowerSetup.AUTOSTART_ROUTES) {
+            val started = runCatching {
+                startActivity(Intent().apply {
+                    setClassName(route.pkg, route.cls)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            }.isSuccess
+            if (started) return
+        }
+        Toast.makeText(this, "这个 ROM 没找到自启动页，去应用详情里手动开「自启动」", Toast.LENGTH_LONG).show()
+        openAppDetails()
+    }
+
+    private fun openAppDetails() {
+        runCatching {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:${packageName}")))
+        }.onFailure {
+            Toast.makeText(this, "无法打开应用详情，请在系统设置中找到 Jev助手", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun isA11yEnabled(): Boolean {
