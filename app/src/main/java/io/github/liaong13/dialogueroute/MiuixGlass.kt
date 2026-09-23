@@ -6,7 +6,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -27,6 +26,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,15 +46,17 @@ import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+internal val LocalAppDarkTheme = staticCompositionLocalOf { false }
+
 @Composable
 internal fun GlassBackdrop(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+    val dark = LocalAppDarkTheme.current
     Box(Modifier.fillMaxSize().drawWithCache {
         val base = Brush.verticalGradient(if (dark)
             listOf(Color(0xFF17243C), Color(0xFF101A28), Color(0xFF111724))
-        else listOf(Color(0xFFE9EFFC), Color(0xFFF3F5FA), Color(0xFFE8F0F5)))
+        else listOf(Color(0xFFF0F3FB), Color(0xFFF4F6FA), Color(0xFFF0F5F8)))
         val glow = Brush.radialGradient(
-            colors = listOf(Color(0xFF8E9FEF).copy(alpha = if (dark) 0.12f else 0.18f), Color.Transparent),
+            colors = listOf(Color(0xFF8E9FEF).copy(alpha = if (dark) 0.12f else 0.07f), Color.Transparent),
             center = Offset(size.width, size.height * 0.18f), radius = size.width.coerceAtLeast(1f))
         onDrawBehind { drawRect(base); drawRect(glow) }
     }) { content() }
@@ -62,17 +64,17 @@ internal fun GlassBackdrop(content: @Composable () -> Unit) {
 
 @Composable
 internal fun Modifier.glassSurface(radius: Dp = 24.dp, floating: Boolean = false): Modifier {
-    val dark = isSystemInDarkTheme()
+    val dark = LocalAppDarkTheme.current
     val shape = RoundedCornerShape(radius)
     val fill = if (dark) Color(0xFF253247) else Color.White
     val highlight = Color.White.copy(alpha = if (dark) 0.22f else 0.92f)
     val edge = if (dark) Color(0xFF91A7C8).copy(alpha = 0.10f) else Color(0xFFB8C6DC).copy(alpha = 0.42f)
     return this
-        .shadow(if (floating) 12.dp else 2.dp, shape, clip = false)
+        .shadow(if (floating) 8.dp else 2.dp, shape, clip = false)
         .clip(shape)
         .background(Brush.verticalGradient(listOf(
-            fill.copy(alpha = if (floating) 0.92f else 0.88f),
-            fill.copy(alpha = if (floating) 0.84f else 0.80f))))
+            fill.copy(alpha = if (!dark) 0.97f else if (floating) 0.92f else 0.88f),
+            fill.copy(alpha = if (!dark) 0.92f else if (floating) 0.84f else 0.80f))))
         .border(0.75.dp, Brush.linearGradient(listOf(highlight, edge, highlight.copy(alpha = 0.08f))), shape)
 }
 
@@ -88,7 +90,7 @@ internal fun GlassCard(modifier: Modifier = Modifier, padding: PaddingValues = P
 @Composable
 internal fun GlassTabs(tabs: List<String>, selectedTabIndex: Int, onTabSelected: (Int) -> Unit,
                       icons: List<ImageVector>? = null) {
-    val dark = isSystemInDarkTheme()
+    val dark = LocalAppDarkTheme.current
     val shape = RoundedCornerShape(22.dp)
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().glassSurface(radius = 26.dp, floating = true)
         .padding(4.dp)) {
@@ -106,7 +108,9 @@ internal fun GlassTabs(tabs: List<String>, selectedTabIndex: Int, onTabSelected:
         Row(Modifier.fillMaxWidth().selectableGroup()) {
             tabs.forEachIndexed { index, title ->
                 val selected = index == selectedTabIndex
-                val tint = if (selected) MiuixTheme.colorScheme.primary
+                val tint = if (selected) {
+                    if (dark) Color(0xFFEAF3FF) else MiuixTheme.colorScheme.primary
+                }
                     else MiuixTheme.colorScheme.onSurfaceVariantSummary
                 Row(modifier = Modifier.weight(1f).clip(shape)
                     .selectable(selected = selected, role = Role.Tab, onClick = { onTabSelected(index) })

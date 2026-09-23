@@ -2,6 +2,7 @@ package io.github.liaong13.dialogueroute.overlay
 
 import android.content.Context
 import android.content.res.Configuration
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.util.TypedValue
@@ -10,9 +11,10 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.android.material.button.MaterialButton
+import io.github.liaong13.dialogueroute.core.Prefs
 import kotlin.math.roundToInt
 
-/** 悬浮窗仍使用 WindowManager View，保留其独立的日夜配色和尺寸。 */
+/** 悬浮窗使用 WindowManager View，与主界面共享主题选择。 */
 internal object OverlayViews {
     var isDark = true
         private set
@@ -37,13 +39,14 @@ internal object OverlayViews {
         private set
 
     fun configurePalette(context: Context) {
-        isDark = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
-            Configuration.UI_MODE_NIGHT_YES
+        isDark = Prefs(context).useDarkTheme(
+            context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                Configuration.UI_MODE_NIGHT_YES)
         if (isDark) {
-            COLOR_CARD_BG = Color.parseColor("#1C1E22")
-            COLOR_CARD_STROKE = Color.parseColor("#30333A")
-            COLOR_PRIMARY = Color.parseColor("#B6BEC9")
-            COLOR_PRIMARY_CONTAINER = Color.parseColor("#34383F")
+            COLOR_CARD_BG = Color.parseColor("#1D242E")
+            COLOR_CARD_STROKE = Color.parseColor("#3D4C62")
+            COLOR_PRIMARY = Color.parseColor("#A8C9FA")
+            COLOR_PRIMARY_CONTAINER = Color.parseColor("#233B57")
             COLOR_INK = Color.parseColor("#F3F4F6")
             COLOR_SUB = Color.parseColor("#A5AAB3")
             COLOR_INPUT_BG = Color.parseColor("#15171A")
@@ -51,12 +54,12 @@ internal object OverlayViews {
             COLOR_RED = Color.parseColor("#D58E8E")
         } else {
             COLOR_CARD_BG = Color.WHITE
-            COLOR_CARD_STROKE = Color.parseColor("#DCE7F5")
+            COLOR_CARD_STROKE = Color.parseColor("#D8E0EC")
             COLOR_PRIMARY = Color.parseColor("#1769C2")
-            COLOR_PRIMARY_CONTAINER = Color.parseColor("#E0EEFF")
-            COLOR_INK = Color.parseColor("#172A43")
-            COLOR_SUB = Color.parseColor("#596D86")
-            COLOR_INPUT_BG = Color.parseColor("#F2F6FC")
+            COLOR_PRIMARY_CONTAINER = Color.parseColor("#E8F0FF")
+            COLOR_INK = Color.parseColor("#202B3D")
+            COLOR_SUB = Color.parseColor("#58667C")
+            COLOR_INPUT_BG = Color.parseColor("#EDF1F7")
             COLOR_GREEN = Color.parseColor("#218356")
             COLOR_RED = Color.parseColor("#BC4A4A")
         }
@@ -78,5 +81,15 @@ internal object OverlayViews {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(context, 16) }
             setOnClickListener { onClick() }
+            styleButton(this)
         }
+
+    fun styleButton(button: TextView) {
+        button.setTextColor(if (isDark) Color.BLACK else Color.WHITE)
+        if (button is MaterialButton) {
+            button.backgroundTintList = ColorStateList.valueOf(COLOR_PRIMARY)
+            button.rippleColor = ColorStateList.valueOf(
+                Color.argb(40, if (isDark) 0 else 255, if (isDark) 0 else 255, if (isDark) 0 else 255))
+        }
+    }
 }

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,8 +26,6 @@ import androidx.compose.ui.unit.dp
 import io.github.liaong13.dialogueroute.core.kb.Contact
 import io.github.liaong13.dialogueroute.core.kb.KbStore
 import io.github.liaong13.dialogueroute.core.kb.Note
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 

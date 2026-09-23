@@ -148,6 +148,18 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     // ------------------------------------------------------------- existing
 
+    var themeMode: String
+        get() = sp.getString(KEY_THEME_MODE, THEME_LIGHT)
+            ?.takeIf { it in setOf(THEME_LIGHT, THEME_DARK, THEME_SYSTEM) } ?: THEME_LIGHT
+        set(value) = sp.edit().putString(KEY_THEME_MODE,
+            value.takeIf { it in setOf(THEME_LIGHT, THEME_DARK, THEME_SYSTEM) } ?: THEME_LIGHT).apply()
+
+    fun useDarkTheme(systemDark: Boolean): Boolean = when (themeMode) {
+        THEME_DARK -> true
+        THEME_SYSTEM -> systemDark
+        else -> false
+    }
+
     /** Free-text describing who the other person is; goes into Jev's state. */
     var relationship: String
         get() = sp.getString(K_REL, DEFAULT_REL) ?: DEFAULT_REL
@@ -238,6 +250,10 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
         /** The one real config file. Anything else is a scratch instance. */
         const val PREFS_MAIN = "dialogue_route"
+        const val KEY_THEME_MODE = "theme_mode"
+        const val THEME_LIGHT = "light"
+        const val THEME_DARK = "dark"
+        const val THEME_SYSTEM = "system"
 
         private const val K_LEGACY_KEY = "openrouter_key"
         private const val K_MIGRATED_V13 = "prefs_migrated_v13"

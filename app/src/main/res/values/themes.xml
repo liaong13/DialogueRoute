@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.DialogueRoute" parent="Theme.Material3Expressive.DayNight.NoActionBar">
+    <style name="Theme.DialogueRoute" parent="Theme.Material3Expressive.Light.NoActionBar">
         <item name="colorPrimary">@color/dr_accent</item>
         <item name="colorOnPrimary">@color/dr_on_accent</item>
         <item name="colorPrimaryVariant">@color/dr_accent</item>
@@ -13,6 +13,9 @@
         <item name="colorOnSurface">@color/dr_text</item>
         <item name="colorOnSurfaceVariant">@color/dr_subtext</item>
         <item name="android:colorAccent">@color/dr_accent</item>
-        <item name="android:windowLightStatusBar">@bool/dr_light_system_bars</item>
+        <item name="android:windowBackground">#F4F6FA</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
 </resources>

@@ -2,22 +2,19 @@ package io.github.liaong13.dialogueroute
 
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -25,19 +22,15 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,23 +42,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.core.view.WindowCompat
 import io.github.liaong13.dialogueroute.core.PowerSetup
 import io.github.liaong13.dialogueroute.core.Prefs
 import io.github.liaong13.dialogueroute.xposed.XposedProbeBridge
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -96,7 +84,32 @@ class MiuixActivity : ComponentActivity() {
 
 @Composable
 private fun DialogueApp(requestedTab: Int) {
-    val dark = isSystemInDarkTheme()
+    val context = LocalContext.current
+    val prefs = remember(context) { Prefs(context) }
+    var themeMode by remember(context) { mutableStateOf(prefs.themeMode) }
+    DisposableEffect(context) {
+        val storage = context.getSharedPreferences(Prefs.PREFS_MAIN, Context.MODE_PRIVATE)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == Prefs.KEY_THEME_MODE || key == null) themeMode = prefs.themeMode
+        }
+        storage.registerOnSharedPreferenceChangeListener(listener)
+        themeMode = prefs.themeMode
+        onDispose { storage.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    val systemDark = isSystemInDarkTheme()
+    val dark = when (themeMode) {
+        Prefs.THEME_DARK -> true
+        Prefs.THEME_SYSTEM -> systemDark
+        else -> false
+    }
+    SideEffect {
+        (context as? android.app.Activity)?.window?.let { window ->
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+        }
+    }
     val colors = if (dark) darkColorScheme(
         primary = Color(0xFFA8C9FA), primaryVariant = Color(0xFFA8C9FA),
         onPrimary = Color(0xFF102D50), primaryContainer = Color(0xFF233B57),
@@ -106,61 +119,64 @@ private fun DialogueApp(requestedTab: Int) {
     ) else lightColorScheme(
         primary = Color(0xFF1769C2), primaryVariant = Color(0xFF1769C2),
         onPrimary = Color.White,
-        primaryContainer = Color(0xFFE5EFFF), background = Color(0xFFF3F6FB),
-        surface = Color(0xFFF3F6FB), surfaceVariant = Color.White,
-        surfaceContainer = Color.White, secondary = Color(0xFFE0EEFF)
+        primaryContainer = Color(0xFFE8F0FF), background = Color(0xFFF4F6FA),
+        onBackground = Color(0xFF202B3D), onSurface = Color(0xFF202B3D),
+        onSurfaceVariantSummary = Color(0xFF58667C),
+        surface = Color(0xFFEDF1F7), surfaceVariant = Color.White,
+        surfaceContainer = Color.White, secondary = Color(0xFFE8F0FF)
     )
-    MiuixTheme(colors = colors) {
-        val context = LocalContext.current
-        val pager = rememberPagerState(initialPage = requestedTab, pageCount = { 3 })
-        val scope = rememberCoroutineScope()
-        var settingsDirty by remember { mutableStateOf(false) }
-        var settingsRevision by remember { mutableIntStateOf(0) }
-        var pendingDestination by remember { mutableStateOf<Int?>(null) }
-        fun requestPage(index: Int) {
-            if (index == pager.currentPage) return
-            if (pager.currentPage == 2 && settingsDirty) pendingDestination = index
-            else scope.launch { pager.animateScrollToPage(index) }
-        }
-        androidx.compose.runtime.LaunchedEffect(requestedTab) {
-            requestPage(requestedTab)
-        }
-        BackHandler(enabled = settingsDirty && pager.currentPage == 2) { pendingDestination = -1 }
-        GlassBackdrop {
-        Scaffold(
-            containerColor = Color.Transparent,
-            bottomBar = {
-                BottomTabBar(pager.currentPage, ::requestPage)
+    CompositionLocalProvider(LocalAppDarkTheme provides dark) {
+        MiuixTheme(colors = colors) {
+            val pager = rememberPagerState(initialPage = requestedTab, pageCount = { 3 })
+            val scope = rememberCoroutineScope()
+            var settingsDirty by remember { mutableStateOf(false) }
+            var settingsRevision by remember { mutableIntStateOf(0) }
+            var pendingDestination by remember { mutableStateOf<Int?>(null) }
+            fun requestPage(index: Int) {
+                if (index == pager.currentPage) return
+                if (pager.currentPage == 2 && settingsDirty) pendingDestination = index
+                else scope.launch { pager.animateScrollToPage(index) }
             }
-        ) { padding ->
-            HorizontalPager(state = pager, beyondViewportPageCount = 2, userScrollEnabled = !settingsDirty,
-                modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) { index ->
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-                    Box(modifier = Modifier.widthIn(max = 680.dp).fillMaxSize()) {
-                        when (index) {
-                            0 -> HomeScreen(active = pager.currentPage == 0,
-                                onOpenSettings = { requestPage(2) },
-                                onOpenKnowledge = { requestPage(1) })
-                            1 -> KnowledgeScreen()
-                            else -> key(settingsRevision) { SettingsScreen(onDirtyChange = { settingsDirty = it }) }
+            androidx.compose.runtime.LaunchedEffect(requestedTab) {
+                requestPage(requestedTab)
+            }
+            BackHandler(enabled = settingsDirty && pager.currentPage == 2) { pendingDestination = -1 }
+            GlassBackdrop {
+                Scaffold(
+                    containerColor = Color.Transparent,
+                    bottomBar = {
+                        BottomTabBar(pager.currentPage, ::requestPage)
+                    }
+                ) { padding ->
+                    HorizontalPager(state = pager, beyondViewportPageCount = 2, userScrollEnabled = !settingsDirty,
+                        modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) { index ->
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                            Box(modifier = Modifier.widthIn(max = 680.dp).fillMaxSize()) {
+                                when (index) {
+                                    0 -> HomeScreen(active = pager.currentPage == 0,
+                                        onOpenSettings = { requestPage(2) },
+                                        onOpenKnowledge = { requestPage(1) })
+                                    1 -> KnowledgeScreen()
+                                    else -> key(settingsRevision) { SettingsScreen(onDirtyChange = { settingsDirty = it }) }
+                                }
+                            }
                         }
                     }
                 }
             }
-        }
-        }
-        AppDialog(show = pendingDestination != null, title = "设置尚未保存",
-            summary = "继续编辑并保存，或放弃本次修改后离开。",
-            onDismissRequest = { pendingDestination = null }) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PrimaryAction("继续编辑") { pendingDestination = null }
-                SecondaryAction("放弃修改并离开") {
-                    val destination = pendingDestination
-                    pendingDestination = null
-                    settingsDirty = false
-                    settingsRevision++
-                    if (destination == -1) (context as? android.app.Activity)?.finish()
-                    else if (destination != null) scope.launch { pager.animateScrollToPage(destination) }
+            AppDialog(show = pendingDestination != null, title = "设置尚未保存",
+                summary = "继续编辑并保存，或放弃本次修改后离开。",
+                onDismissRequest = { pendingDestination = null }) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PrimaryAction("继续编辑") { pendingDestination = null }
+                    SecondaryAction("放弃修改并离开") {
+                        val destination = pendingDestination
+                        pendingDestination = null
+                        settingsDirty = false
+                        settingsRevision++
+                        if (destination == -1) (context as? android.app.Activity)?.finish()
+                        else if (destination != null) scope.launch { pager.animateScrollToPage(destination) }
+                    }
                 }
             }
         }

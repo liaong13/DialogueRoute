@@ -2,8 +2,11 @@ package io.github.liaong13.dialogueroute.overlay
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -29,8 +32,8 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Floating overlay with Modern Dark Theme design style for Dialogue Route (对话攻略).
- * A draggable bubble that expands into a translucent dark panel showing Jev's analysis
+ * Floating overlay for Dialogue Route (对话攻略), using the app's selected theme.
+ * A draggable bubble that expands into a translucent panel showing Jev's analysis
  * and ranked candidate replies. All actions are copy / fill — never send.
  */
 class OverlayController(private val ctx: Context) {
@@ -39,6 +42,17 @@ class OverlayController(private val ctx: Context) {
 
     private val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val prefs = Prefs(ctx)
+    private val storage = ctx.getSharedPreferences(Prefs.PREFS_MAIN, Context.MODE_PRIVATE)
+    private var renderedDark = OverlayViews.isDark
+    private val appearanceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == Prefs.KEY_THEME_MODE || key == null) root?.post { refreshAppearance() }
+    }
+    private val configurationListener = object : ComponentCallbacks {
+        override fun onConfigurationChanged(newConfig: Configuration) {
+            root?.post { refreshAppearance() }
+        }
+        override fun onLowMemory() = Unit
+    }
     private var root: FrameLayout? = null
     private var bubble: TextView? = null
     private var dangerDot: View? = null
@@ -82,10 +96,11 @@ class OverlayController(private val ctx: Context) {
     private val screenW get() = ctx.resources.displayMetrics.widthPixels
     private val screenH get() = ctx.resources.displayMetrics.heightPixels
 
-    /** Panel background: Dark slate with user's opacity so the chat shows through. */
+    /** 面板透明度保留用户设置，底色随应用主题变化。 */
     private fun panelBg(): Int {
         val a = (prefs.overlayOpacity / 100f * 255).roundToInt().coerceIn(160, 255)
-        return Color.argb(a, 21, 22, 30)
+        val base = OverlayViews.COLOR_CARD_BG
+        return Color.argb(a, Color.red(base), Color.green(base), Color.blue(base))
     }
 
     private fun card(radius: Int, color: Int, stroke: Boolean = false) = GradientDrawable().apply {
@@ -96,7 +111,26 @@ class OverlayController(private val ctx: Context) {
 
     // ---------------------------------------------------------------- window
 
+    private class AppearanceBinding(val update: () -> Unit)
+
+    private fun <T : View> T.bindAppearance(update: T.() -> Unit): T = apply {
+        tag = AppearanceBinding { update() }
+        update()
+    }
+
+    private fun refreshAppearance() {
+        OverlayViews.configurePalette(ctx)
+        if (renderedDark == OverlayViews.isDark) return
+        renderedDark = OverlayViews.isDark
+        fun refresh(view: View) {
+            (view.tag as? AppearanceBinding)?.update?.invoke()
+            if (view is ViewGroup) for (index in 0 until view.childCount) refresh(view.getChildAt(index))
+        }
+        root?.let(::refresh)
+    }
+
     private fun ensureRoot() {
+        refreshAppearance()
         if (root != null) return
         if (!canOverlay()) { Log.w("DIALOGUEROUTE", "overlay: canDrawOverlays=false"); return }
         val params = WindowManager.LayoutParams(
@@ -118,7 +152,11 @@ class OverlayController(private val ctx: Context) {
         r.addView(p)
         r.addView(bubbleWrap)
         root = r
-        try { wm.addView(r, params) } catch (e: Exception) {
+        try {
+            wm.addView(r, params)
+            storage.registerOnSharedPreferenceChangeListener(appearanceListener)
+            ctx.applicationContext.registerComponentCallbacks(configurationListener)
+        } catch (e: Exception) {
             Log.e("DIALOGUEROUTE", "overlay addView failed: ${e.message}"); root = null
         }
     }
@@ -129,15 +167,16 @@ class OverlayController(private val ctx: Context) {
         }
         val b = TextView(ctx).apply {
             text = "攻"
-            setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             textSize = 14f
             setTypeface(typeface, Typeface.BOLD)
+            layoutParams = FrameLayout.LayoutParams(dp(52), dp(52))
+        }.bindAppearance {
+            setTextColor(if (OverlayViews.isDark) Color.BLACK else Color.WHITE)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.argb(238, 139, 92, 246)) // Accent Violet
+                setColor(OverlayViews.COLOR_PRIMARY)
             }
-            layoutParams = FrameLayout.LayoutParams(dp(52), dp(52))
         }
         val dot = View(ctx).apply {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.TRANSPARENT) }
@@ -156,13 +195,12 @@ class OverlayController(private val ctx: Context) {
         val p = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            background = card(20, panelBg(), stroke = true)
             elevation = dp(8).toFloat()
             setPadding(dp(16), dp(14), dp(16), dp(14))
             layoutParams = FrameLayout.LayoutParams(dp(320), FrameLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(56)
             }
-        }
+        }.bindAppearance { background = card(20, panelBg(), stroke = true) }
         // Header
         val header = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -170,11 +208,10 @@ class OverlayController(private val ctx: Context) {
         }
         header.addView(TextView(ctx).apply {
             text = "对话攻略 · ROUTE"
-            setTextColor(OverlayViews.COLOR_INK)
             textSize = 15f
             setTypeface(typeface, Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        })
+        }.bindAppearance { setTextColor(OverlayViews.COLOR_INK) })
         header.addView(iconBtn("⚙") { openSettings() })
         header.addView(iconBtn("✕") { toggle() })
         p.addView(header)
@@ -194,11 +231,10 @@ class OverlayController(private val ctx: Context) {
 
     private fun iconBtn(glyph: String, onClick: () -> Unit) = TextView(ctx).apply {
         text = glyph
-        setTextColor(OverlayViews.COLOR_SUB)
         textSize = 16f
         setPadding(dp(10), dp(2), dp(6), dp(2))
         setOnClickListener { onClick() }
-    }
+    }.bindAppearance { setTextColor(OverlayViews.COLOR_SUB) }
 
     // --------------------------------------------------------------- gestures
 
@@ -237,13 +273,13 @@ class OverlayController(private val ctx: Context) {
     }
 
     private fun showBubbleMenu() {
+        refreshAppearance()
         val menu = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = card(16, panelBg(), stroke = true)
             elevation = dp(8).toFloat()
             setPadding(dp(4), dp(4), dp(4), dp(4))
             layoutParams = FrameLayout.LayoutParams(dp(200), ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(56) }
-        }
+        }.bindAppearance { background = card(16, panelBg(), stroke = true) }
         if (onOcrCapture != null) {
             menu.addView(menuItem("截屏识别一次") { root?.removeView(menu); onOcrCapture?.invoke() })
         }
@@ -259,11 +295,10 @@ class OverlayController(private val ctx: Context) {
 
     private fun menuItem(label: String, onClick: () -> Unit) = TextView(ctx).apply {
         text = label
-        setTextColor(OverlayViews.COLOR_INK)
         textSize = 14f
         setPadding(dp(12), dp(10), dp(12), dp(10))
         setOnClickListener { onClick() }
-    }
+    }.bindAppearance { setTextColor(OverlayViews.COLOR_INK) }
 
     private fun openSettings() {
         runCatching {
@@ -279,6 +314,7 @@ class OverlayController(private val ctx: Context) {
     private var collapsedY = dp(150)
 
     private fun toggle() {
+        refreshAppearance()
         expanded = !expanded
         val params = lp ?: return
         if (expanded) {
@@ -306,10 +342,10 @@ class OverlayController(private val ctx: Context) {
     fun showCapturePreview(snapshot: ChatSnapshot) {
         ensureRoot()
         val views = ArrayList<View>()
-        views.add(line("Xposed 本次采集 · ${snapshot.messages.size} 条", "#F3F4F6", 14f, true))
+        views.add(line("Xposed 本次采集 · ${snapshot.messages.size} 条", { OverlayViews.COLOR_INK }, 14f, true))
         snapshot.messages.takeLast(6).forEach { message ->
             views.add(line("${if (message.side == "me") "我" else "对方"}：${message.text}",
-                "#9CA3AF", 12f))
+                { OverlayViews.COLOR_SUB }, 12f))
         }
         views.add(bigButton("分析当前对话") { onManualAnalyze?.invoke() })
         setContent(views)
@@ -326,7 +362,7 @@ class OverlayController(private val ctx: Context) {
     }
 
     private fun bigButton(label: String, onClick: () -> Unit) =
-        OverlayViews.createButton(ctx, label, onClick)
+        OverlayViews.createButton(ctx, label, onClick).bindAppearance { OverlayViews.styleButton(this) }
 
     fun showLoading() {
         ensureRoot(); bubble?.alpha = 1f
@@ -354,7 +390,7 @@ class OverlayController(private val ctx: Context) {
     fun showError(msg: String) {
         ensureRoot(); bubble?.alpha = 1f
         setContent(listOf(
-            line("出错了", "#EF4444", 14f, true),
+            line("出错了", { OverlayViews.COLOR_RED }, 14f, true),
             hint(msg)))
     }
 
@@ -377,6 +413,8 @@ class OverlayController(private val ctx: Context) {
     fun toast(msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
 
     fun hide() {
+        storage.unregisterOnSharedPreferenceChangeListener(appearanceListener)
+        ctx.applicationContext.unregisterComponentCallbacks(configurationListener)
         val r = root ?: return
         runCatching { wm.removeView(r) }
         root = null; bubble = null; panel = null; contentBox = null; dangerDot = null; expanded = false
@@ -407,7 +445,7 @@ class OverlayController(private val ctx: Context) {
         }
 
         a.trueIntent?.let {
-            views.add(line("对方真实意图：${INTENT[it.choice] ?: it.choice}", "#F3F4F6", 15f, true))
+            views.add(line("对方真实意图：${INTENT[it.choice] ?: it.choice}", { OverlayViews.COLOR_INK }, 15f, true))
             views.add(hint("把握 ${(it.confidence * 100).roundToInt()}%"))
         }
 
@@ -415,11 +453,11 @@ class OverlayController(private val ctx: Context) {
         a.sheNeeds?.let { bits.add("要${(NEEDS[it.choice] ?: it.choice)}") }
         a.bestAction?.let { bits.add(ACTION[it.choice] ?: it.choice) }
         a.shouldReplyNow?.let { bits.add(if (it >= 0.5) "可给实质" else "先别给实质") }
-        if (bits.isNotEmpty()) views.add(line(bits.joinToString("  ·  "), "#D1D5DB", 13f))
-        a.tensionResolved?.let { if (it >= 0.7) views.add(line("✓ 紧张已缓解", "#22C55E", 12f)) }
+        if (bits.isNotEmpty()) views.add(line(bits.joinToString("  ·  "), { OverlayViews.COLOR_INK }, 13f))
+        a.tensionResolved?.let { if (it >= 0.7) views.add(line("✓ 紧张已缓解", { OverlayViews.COLOR_GREEN }, 12f)) }
 
         views.add(divider())
-        views.add(line("回复选项（模型推荐）", "#9CA3AF", 12f))
+        views.add(line("回复选项（模型推荐）", { OverlayViews.COLOR_SUB }, 12f))
         if (generating) {
             views.add(hint("生成中…"))
         } else {
@@ -439,48 +477,47 @@ class OverlayController(private val ctx: Context) {
     }
 
     private fun dangerBadge(lvl: Int, max: Int): View {
-        val color = dangerColor(lvl)
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(0, 0, 0, dp(6))
         }
         row.addView(TextView(ctx).apply {
             text = "危险 $lvl/$max"
-            setTextColor(Color.WHITE); textSize = 12.5f; setTypeface(typeface, Typeface.BOLD)
+            textSize = 12.5f; setTypeface(typeface, Typeface.BOLD)
             setPadding(dp(10), dp(4), dp(10), dp(4))
-            background = card(16, color)
+        }.bindAppearance {
+            setTextColor(if (OverlayViews.isDark) Color.BLACK else Color.WHITE)
+            background = card(16, dangerColor(lvl))
         })
         row.addView(TextView(ctx).apply {
-            text = "  " + dangerWord(lvl); setTextColor(color); textSize = 13f
+            text = "  " + dangerWord(lvl); textSize = 13f
             setTypeface(typeface, Typeface.BOLD)
-        })
+        }.bindAppearance { setTextColor(dangerColor(lvl)) })
         return row
     }
 
     private fun replyCard(rank: Int, text: String, pct: Int, onFill: (String) -> Unit): View {
         val top = rank == 1
-        val cardBg = if (top) OverlayViews.COLOR_PRIMARY_CONTAINER else OverlayViews.COLOR_INPUT_BG
         val c = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = card(16, cardBg)
             setPadding(dp(12), dp(10), dp(12), dp(10))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(8) }
+        }.bindAppearance {
+            background = card(16, if (top) OverlayViews.COLOR_PRIMARY_CONTAINER else OverlayViews.COLOR_INPUT_BG)
         }
         c.addView(TextView(ctx).apply {
             this.text = "#$rank · ${pct}%"
-            setTextColor(OverlayViews.COLOR_PRIMARY)
             textSize = 11.5f
             setTypeface(typeface, Typeface.BOLD)
-        })
+        }.bindAppearance { setTextColor(OverlayViews.COLOR_PRIMARY) })
         c.addView(TextView(ctx).apply {
             this.text = text
-            setTextColor(OverlayViews.COLOR_INK)
             textSize = 14f
             setPadding(0, dp(4), 0, dp(8))
             setLineSpacing(dp(2).toFloat(), 1f)
-        })
+        }.bindAppearance { setTextColor(OverlayViews.COLOR_INK) })
         val btns = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         btns.addView(pill("复制", false) { copy(text) })
         btns.addView(pill("填入", true) {
@@ -495,47 +532,49 @@ class OverlayController(private val ctx: Context) {
     private fun pill(label: String, primary: Boolean, onClick: () -> Unit) = TextView(ctx).apply {
         text = label; textSize = 12.5f; gravity = Gravity.CENTER
         setTypeface(typeface, Typeface.BOLD)
-        setTextColor(if (primary && OverlayViews.isDark) Color.BLACK
-            else if (primary) Color.WHITE else OverlayViews.COLOR_PRIMARY)
-        background = card(16, if (primary) OverlayViews.COLOR_PRIMARY else OverlayViews.COLOR_CARD_BG, stroke = !primary)
         setPadding(dp(16), dp(6), dp(16), dp(6))
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { rightMargin = dp(8) }
         setOnClickListener { onClick() }
+    }.bindAppearance {
+        setTextColor(if (primary && OverlayViews.isDark) Color.BLACK
+            else if (primary) Color.WHITE else OverlayViews.COLOR_PRIMARY)
+        background = card(16, if (primary) OverlayViews.COLOR_PRIMARY else OverlayViews.COLOR_CARD_BG, stroke = !primary)
     }
 
     private fun reAnalyzeBtn() = TextView(ctx).apply {
         text = "重新分析"; textSize = 13f; gravity = Gravity.CENTER
-        setTextColor(OverlayViews.COLOR_SUB)
         setPadding(dp(10), dp(10), dp(10), dp(4))
         setOnClickListener { onManualAnalyze?.invoke() }
-    }
+    }.bindAppearance { setTextColor(OverlayViews.COLOR_SUB) }
 
     private fun tintBubbleDanger(score: Double) {
-        val color = dangerColor(score.roundToInt())
-        dangerDot?.background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL; setColor(color); setStroke(dp(2), Color.WHITE)
+        dangerDot?.bindAppearance {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(dangerColor(score.roundToInt()))
+                setStroke(dp(2), OverlayViews.COLOR_CARD_BG)
+            }
         }
     }
 
     // --------------------------------------------------------------- helpers
 
-    private fun line(text: String, color: String, size: Float, bold: Boolean = false) =
+    private fun line(text: String, color: () -> Int, size: Float, bold: Boolean = false) =
         TextView(ctx).apply {
-            this.text = text; setTextColor(Color.parseColor(color)); textSize = size
+            this.text = text; textSize = size
             if (bold) setTypeface(typeface, Typeface.BOLD)
             setPadding(0, dp(2), 0, dp(2))
-        }
+        }.bindAppearance { setTextColor(color()) }
 
-    private fun hint(text: String) = line(text, "#9CA3AF", 12f)
+    private fun hint(text: String) = line(text, { OverlayViews.COLOR_SUB }, 12f)
 
     private fun divider() = View(ctx).apply {
-        setBackgroundColor(OverlayViews.COLOR_CARD_STROKE)
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
             topMargin = dp(8); bottomMargin = dp(4)
         }
-    }
+    }.bindAppearance { setBackgroundColor(OverlayViews.COLOR_CARD_STROKE) }
 
     private fun copy(text: String) {
         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -545,7 +584,7 @@ class OverlayController(private val ctx: Context) {
 
     private fun dangerColor(lvl: Int): Int = when {
         lvl >= 6 -> OverlayViews.COLOR_RED
-        lvl >= 3 -> Color.parseColor("#F59E0B")
+        lvl >= 3 -> Color.parseColor(if (OverlayViews.isDark) "#E1B76B" else "#916000")
         else -> OverlayViews.COLOR_GREEN
     }
 

@@ -70,8 +70,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.io.ByteArrayOutputStream
@@ -145,6 +143,7 @@ private fun SettingsContent(onDirtyChange: (Boolean) -> Unit) {
     }
 
     var xposed by remember { mutableStateOf(prefs.xposedEnabled) }
+    var themeMode by remember { mutableStateOf(prefs.themeMode) }
     var judgeProvider by remember { mutableStateOf(prefs.judgeProvider) }
     var judgeBase by remember { mutableStateOf(prefs.judgeBaseUrl) }
     var judgeKey by remember { mutableStateOf(prefs.judgeKey) }
@@ -169,7 +168,7 @@ private fun SettingsContent(onDirtyChange: (Boolean) -> Unit) {
     var kbResult by remember { mutableStateOf("") }
     var clearDialog by remember { mutableStateOf(false) }
     var section by remember { mutableIntStateOf(0) }
-    val currentValues = listOf(xposed, judgeProvider, judgeBase, judgeKey, judgeModel,
+    val currentValues = listOf(themeMode, xposed, judgeProvider, judgeBase, judgeKey, judgeModel,
         replyBase, replyKey, replyModel, visionBase, visionKey, visionModel, relationship, whitelist,
         autoAnalyze, ocrFallback, ocrAuto, historyEnabled, historyCount, opacity)
     var savedValues by remember { mutableStateOf(currentValues) }
@@ -337,6 +336,18 @@ private fun SettingsContent(onDirtyChange: (Boolean) -> Unit) {
                     item { SupportingText("聊天内容与选中的知识库上下文会发送至所配置的模型服务。") }
                 }
                 if (section == 2) {
+                    item { SectionHeading("外观") }
+                    item {
+                        SettingsCard {
+                            SupportingText("默认使用浅色。保存后应用于主界面和悬浮窗。")
+                            Spacer(Modifier.height(12.dp))
+                            Column(Modifier.selectableGroup()) {
+                                ChoiceRow("浅色", themeMode == Prefs.THEME_LIGHT) { themeMode = Prefs.THEME_LIGHT }
+                                ChoiceRow("深色", themeMode == Prefs.THEME_DARK) { themeMode = Prefs.THEME_DARK }
+                                ChoiceRow("跟随系统", themeMode == Prefs.THEME_SYSTEM) { themeMode = Prefs.THEME_SYSTEM }
+                            }
+                        }
+                    }
                     item { SectionHeading("分析设置") }
                     item {
                         SettingsCard {
@@ -415,6 +426,7 @@ private fun SettingsContent(onDirtyChange: (Boolean) -> Unit) {
                 prefs.contextEnabled = historyEnabled
                 prefs.contextHistoryCount = historyCount.trim().toIntOrNull()?.coerceIn(0, 100) ?: 30
                 prefs.overlayOpacity = opacity.toInt()
+                prefs.themeMode = themeMode
                 if (prefs.xposedEnabled != xposed) {
                     prefs.xposedEnabled = xposed
                     XposedCaptureRuntime.get(context).onChatClosed()
