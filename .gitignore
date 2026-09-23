@@ -32,9 +32,6 @@ Thumbs.db
 *.key
 secrets.*
 
-# Prebuilt APK for direct install (tracked on purpose)
-!/apk/*.apk
-
 # Signing material never enters the repo
 *.jks
 *.keystore

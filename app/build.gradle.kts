@@ -6,37 +6,39 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// Release signing: reads a properties file kept OUTSIDE the repo
-// (storeFile / storePassword / keyAlias / keyPassword). Override the path with
-// the JEV_KEYSTORE_PROPS env var. Without it, release builds are unsigned.
-val releaseProps = Properties().apply {
-    val f = file(System.getenv("JEV_KEYSTORE_PROPS") ?: "H:/android/keys/jev-release.properties")
-    if (f.exists()) FileInputStream(f).use { load(it) }
+// 签名配置由环境变量显式指定；未配置时生成未签名的 release 包。
+val releaseProps = System.getenv("DIALOGUE_ROUTE_KEYSTORE_PROPS")?.takeIf { it.isNotBlank() }?.let { path ->
+    val propsFile = rootProject.file(path)
+    require(propsFile.isFile) { "DIALOGUE_ROUTE_KEYSTORE_PROPS must point to an existing properties file" }
+    Properties().apply {
+        FileInputStream(propsFile).use { load(it) }
+        for (key in listOf("storeFile", "storePassword", "keyAlias", "keyPassword")) {
+            require(!getProperty(key).isNullOrBlank()) { "Missing release signing property: $key" }
+        }
+    }
 }
 
 android {
-    namespace = "com.jev.probe"
+    namespace = "io.github.liaong13.dialogueroute"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.jev.probe"
+        applicationId = "io.github.liaong13.dialogueroute"
         minSdk = 30
         targetSdk = 35
         versionCode = 4
         versionName = "1.3"
 
-        // ML Kit's bundled Chinese recognizer ships native libs for every ABI.
-        // The target phone (and every phone this can run on: minSdk 30) is
-        // arm64, so keep only that one — the other three are dead weight.
+        // 当前发行配置仅包含 arm64-v8a，以控制离线 OCR 模型的包体大小。
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
     }
 
     signingConfigs {
-        if (releaseProps.isNotEmpty()) {
+        if (releaseProps != null) {
             create("release") {
-                storeFile = file(releaseProps.getProperty("storeFile"))
+                storeFile = rootProject.file(releaseProps.getProperty("storeFile"))
                 storePassword = releaseProps.getProperty("storePassword")
                 keyAlias = releaseProps.getProperty("keyAlias")
                 keyPassword = releaseProps.getProperty("keyPassword")

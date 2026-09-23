@@ -14,7 +14,7 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
-        android:theme="@style/Theme.JevProbe">
+        android:theme="@style/Theme.DialogueRoute">
 
         <activity
             android:name=".MainActivity"

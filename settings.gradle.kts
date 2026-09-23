@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "jev-android"
+rootProject.name = "dialogue-route-android"
 include(":app")
