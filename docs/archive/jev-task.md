@@ -1,5 +1,7 @@
 > 上游历史归档：保留原文供参考，机器路径、测试结论和任务指令可能过期。当前开发以 [开发指南](../development.md) 为准。
 
+> 2026-09-24 维护说明：当前主界面采用 Compose/MIUIX，旧站点、历史 APK 与独立 Python 校准工具已移除。下文仍保留原始任务和测试语境，不能作为当前实现或验收结论；请查看 [文档索引](../README.md) 与 [当日变更](../daily-changes-2026-09-24.md)。
+
 # 任务：搭 Jev 判断层的题目集 + 校准脚手架（Python，PC 上跑）
 
 你在 `H:\ai_tool\jev-android`。**先读 `CLAUDE.md` 和 `docs/acceptance.md`**，里面有硬约束和验收标准。

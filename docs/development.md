@@ -2,6 +2,8 @@
 
 Codex 的仓库开发约定统一维护在根目录 [AGENTS.md](../AGENTS.md)。
 
+文档同步日期：2026-09-24。完整入口见 [文档索引](README.md)，当天提交与统计见 [2026-09-24 变更记录](daily-changes-2026-09-24.md)。
+
 ## 工程入口
 
 本项目是单模块 Android Gradle 工程，应用模块为 `app`，不涉及 AOSP System/Vendor 分仓。
@@ -11,12 +13,23 @@ Codex 的仓库开发约定统一维护在根目录 [AGENTS.md](../AGENTS.md)。
 - 采集分发：`capture/ChatCaptureService.kt`。
 - 模型调用：`jev/JudgeClient.kt`、`ReplyClient.kt`、`VisionClient.kt`。
 - UI：`MiuixActivity.kt`、`MiuixSettings.kt`、`MiuixKnowledge.kt` 与 `overlay/`。
+- 共用 UI：`MiuixUi.kt`、`MiuixGlass.kt`；View 悬浮窗控件与配色：`overlay/OverlayViews.kt`。
 
 产品名为“对话攻略”，英文副标为“Dialogue Route”，包名为 `io.github.liaong13.dialogueroute`。包名与上游不同，因此会作为独立应用安装；旧包的配置和私有数据不会自动迁移。
 
+## 构建与界面基线
+
+当前 Gradle 配置为 `versionName=1.3`、`versionCode=4`，V1.4 是开发方案名称，尚未更新应用版本号。使用 JDK 17 或 25、SDK Platform 37、Gradle Wrapper 9.4.1、AGP 9.2.1；Java 源码/目标级别为 17，compileSdk 37、targetSdk 35、minSdk 30，仅包含 `arm64-v8a`。
+
+主界面已启用 Compose，Compose 插件为 2.4.0、BOM 为 2026.09.00、Activity Compose 为 1.13.0、MIUIX 为 0.9.3；版本以根目录和应用 Gradle 配置为准。Manifest 的唯一 Activity 为 `MiuixActivity`，主页、知识库、设置使用内部页签，外部入口通过 `EXTRA_TAB` 选择页签。旧 `MainActivity`、`SettingsActivity`、`KnowledgeActivity` 和 `Insets.kt` 已删除。
+
+设置修改需点击“保存设置”；未保存时切换页签或返回会提示继续编辑或放弃修改。外观设置保存到 `Prefs.themeMode`，支持 `light`、`dark`、`system`，缺省或非法值回退浅色。Compose、系统栏与 View 悬浮窗共用该选择，悬浮窗监听偏好及系统配置变化更新配色。主题回归需覆盖已展开面板、跟随系统、窗口隐藏后重开，以及监听器释放。
+
+macOS/Linux 使用 `sh gradlew :app:assembleDebug`；Wrapper 在 Git 中没有执行位。Windows 使用 `gradlew.bat :app:assembleDebug`。APK 输出为 `app/build/outputs/apk/debug/app-debug.apk`，SDK 路径由本机 `local.properties` 配置。
+
 ## Release 签名
 
-未设置 `DIALOGUE_ROUTE_KEYSTORE_PROPS` 时，`./gradlew :app:assembleRelease` 生成未签名 APK。
+未设置 `DIALOGUE_ROUTE_KEYSTORE_PROPS` 时，`sh gradlew :app:assembleRelease` 生成未签名 APK。
 
 需要签名时，在仓库外创建 properties 文件，填入：
 
@@ -30,7 +43,7 @@ keyPassword=YOUR_KEY_PASSWORD
 然后执行：
 
 ```bash
-DIALOGUE_ROUTE_KEYSTORE_PROPS=/absolute/path/to/release.properties ./gradlew :app:assembleRelease
+DIALOGUE_ROUTE_KEYSTORE_PROPS=/absolute/path/to/release.properties sh gradlew :app:assembleRelease
 ```
 
 环境变量中的相对路径及 `storeFile` 相对路径均以仓库根目录为基准，建议使用绝对路径；Windows properties 路径建议使用正斜杠。显式指定的配置文件不存在或缺少字段时，Gradle 配置阶段会报错，避免误生成未签名包。签名文件与密码不得提交。
@@ -51,7 +64,7 @@ DIALOGUE_ROUTE_KEYSTORE_PROPS=/absolute/path/to/release.properties ./gradlew :ap
 
 ## V1.4 多平台 libxposed 设计与现状
 
-[当前开发状态](current-development-status.md)记录本轮已验证的设备结果、剩余验收项和换机接续步骤。
+[当前开发状态](current-development-status.md)分开记录 2026-09-24 的代码状态、2026-09-23 的设备验证和剩余验收项；历史测试不代表新界面版本已验收。
 
 [当前设计](v1.4-libxposed-multiplatform-design.md) 替代最初的微信只读备用方案。用户要求同一个 APK 同时是应用和 Xposed 模块，实施顺序为 QQ → 微信 → X → 飞书。当前 `:app` 已针对微信 8.0.78（3180）接入当前会话文本、主应用分析及草稿填入代码；Android 17 设备已验证模块加载、聊天页命中和非空正文心跳，用户确认一个测试会话最近 6 条正文及方向一致，草稿填入仍待端到端验证：
 
@@ -67,11 +80,13 @@ DIALOGUE_ROUTE_KEYSTORE_PROPS=/absolute/path/to/release.properties ./gradlew :ap
 日常修改先做路径级差异审查及 `git diff --check`。需要动态验证时可运行：
 
 ```bash
-./gradlew :app:testDebugUnitTest
-./gradlew :app:assembleDebug
+sh gradlew :app:testDebugUnitTest
+sh gradlew :app:assembleDebug
 ```
 
-设备验收应覆盖聊天页和列表页识别、空消息 OCR、悬浮窗隐藏与恢复、回复填入后不发送。记录设备、系统、聊天应用版本和复现步骤；历史记录不能代替当前设备验证。
+Windows 对应使用 `gradlew.bat :app:testDebugUnitTest` 和 `gradlew.bat :app:assembleDebug`。这些是验证入口，不表示本次文档整理已执行构建或测试。
+
+设备验收应覆盖聊天页和列表页识别、空消息 OCR、悬浮窗隐藏与恢复、回复填入后不发送，以及三个页签、设置保存/放弃、知识库编辑和三种主题的同步。记录设备、系统、聊天应用版本和复现步骤；历史记录不能代替当前设备验证。
 
 ## 上游资料
 
@@ -79,4 +94,4 @@ DIALOGUE_ROUTE_KEYSTORE_PROPS=/absolute/path/to/release.properties ./gradlew :ap
 
 上游独立 Python 校准工具已移除，不参与当前应用的构建或测试；历史文档中的工具路径与命令不再适用。旧脚本与标注样本可从 Git 历史恢复。后续如需模型质量校准，应以应用实际使用的 `JevQuestions`、模型配置和知识库上下文构造为准。
 
-源码仓库不再保留上游历史 APK，新版本产物通过本仓库 Releases 分发。LICENSE、NOTICE、贡献者名单保留原始归属。
+源码仓库已移除上游 `site/` 和历史 APK，新版本产物通过本仓库 Releases 分发。旧 `CHANGELOG.md`、`CONTRIBUTORS.md` 已随文档精简移除；[LICENSE](../LICENSE)、[NOTICE](../NOTICE) 与 README 的上游归属继续保留，本 fork 的当日记录在文档索引中维护。

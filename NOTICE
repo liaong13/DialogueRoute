@@ -1,4 +1,17 @@
-Jev 聊天助手 (Jev Chat Assistant)
+对话攻略 (Dialogue Route)
+Copyright (c) 2026 liaong13 and the Dialogue Route contributors
+https://github.com/liaong13/DialogueRoute
+
+对话攻略由 liaong13 基于 Jev 聊天助手独立开发，不代表上游官方版本，
+也不表示获得原作者背书。本 fork 的修改继续采用 MIT 协议（见 LICENSE）。
+以下保留上游版权、来源与声明。
+
+Dialogue Route is an independent fork maintained by liaong13, based on
+Jev Chat Assistant. It is not an official upstream release or an endorsement
+by the original authors. Fork modifications remain under the MIT License.
+The upstream attribution and notice are preserved below.
+
+上游项目 / Upstream: Jev 聊天助手 (Jev Chat Assistant)
 Copyright (c) 2026 Finderchangchang and the jev-chat contributors
 https://github.com/jev-chat/jev-chat-jarvis · https://chatjevs.com
 

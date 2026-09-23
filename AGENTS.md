@@ -7,6 +7,7 @@
 - 这是单模块 Android Gradle 应用，不是 AOSP System/Vendor 工程；不要套用平台分仓排查流程。
 - 技术栈是 Kotlin + Compose/MIUIX 主界面，悬浮窗仍使用 Android View；无 Web 前端构建链。版本以 Gradle 文件为准；当前使用 JDK 17、compileSdk 37、targetSdk 35、minSdk 30，仅打包 `arm64-v8a`。
 - 开始任务先读 [README.md](README.md) 和 [开发指南](docs/development.md)，检查 `git status --short` 与目标文件已有 diff。新增但未跟踪的源码也是当前工作区的一部分，不能只审查 `git diff`。
+- 文档入口见 [文档索引](docs/README.md)，2026-09-24 的界面迁移与仓库清理见 [当日变更](docs/daily-changes-2026-09-24.md)。历史评审与归档保留原始日期，不把历史构建/验机结论用于当前版本。
 - 用户只要求分析、检查或评审时，默认只读业务代码；明确要求修复时才修改。保留已有本地改动，使用最小补丁，不自动提交、推送或清理工作区。
 
 ## 代码入口
@@ -16,6 +17,7 @@
 | 路径 | 职责 |
 | --- | --- |
 | `MiuixActivity.kt`、`MiuixSettings.kt`、`MiuixKnowledge.kt` | 主界面、模型配置、知识库编辑 |
+| `MiuixUi.kt`、`MiuixGlass.kt`、`overlay/OverlayViews.kt` | Compose 共用组件、玻璃效果与 View 悬浮窗配色 |
 | `capture/ChatCaptureService.kt` | 无障碍采集分发、分析调度、回复填入 |
 | `capture/*Adapter.kt`、`capture/ChatNodeHelpers.kt` | 各聊天平台节点解析与共享辅助逻辑 |
 | `capture/ocr/` | 截屏、坐标映射、本地 ML Kit OCR |
@@ -31,6 +33,7 @@
 
 ## 必须保持的行为边界
 
+- `MiuixActivity` 是唯一应用 Activity，主页、知识库和设置为内部页签。主题使用 `Prefs.themeMode`，缺省为浅色，支持深色和跟随系统；保存后主界面、系统栏与 View 悬浮窗同步。修改时保留未保存设置的离页提示，并核对监听器释放。
 - 当前已有无障碍与 OCR 路径，以及微信 8.0.78（3180）的 Xposed 文本采集实现；具体已验证范围见[当前开发状态](docs/current-development-status.md)。V1.4 按[多平台 libxposed 方案](docs/v1.4-libxposed-multiplatform-design.md)继续推进，优先 libxposed，按 QQ → 微信 → X → 飞书实施，以功能效果为先；允许有范围的宿主会话/消息模型 hook、当前会话内部查询、必要的参数/结果适配及用户触发的草稿填入，不以“非侵入性/只读 View”限制实现。正文获取限当前活动会话，不导出整库或登录凭据；未列为已验证的功能不得宣称验机通过。
 - 回复只复制或填入，发送必须由用户手动完成；不操作转账、红包、收款。
 - 平台适配器的三态契约：`null` 表示非聊天页；空消息的 `ChatSnapshot` 表示聊天页无正文、可触发 OCR；非空消息表示正常采集。不要用普通搜索框代替聊天页判据。
