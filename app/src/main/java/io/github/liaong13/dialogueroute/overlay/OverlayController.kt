@@ -55,6 +55,9 @@ class OverlayController(private val ctx: Context) {
     /** Bubble menu → one manual screenshot + OCR of whatever app is open. */
     var onOcrCapture: (() -> Unit)? = null
 
+    /** Xposed mode only: let the user compare the in-memory capture with the open chat. */
+    var onInspectCapture: (() -> Unit)? = null
+
     /** How much knowledge context the last analysis actually used. */
     private var ctxNotes = 0
     private var ctxHistory = 0
@@ -67,6 +70,7 @@ class OverlayController(private val ctx: Context) {
 
     private var lastJudgment: Analysis? = null
     private var lastFill: ((String) -> Unit)? = null
+    private var pendingReplies: List<RankedReply>? = null
 
     /** Set when [showReplies] was handed a draftAndRank failure, so the panel
      *  can say so instead of silently showing "（未生成候选回复）". */
@@ -240,7 +244,12 @@ class OverlayController(private val ctx: Context) {
             setPadding(dp(4), dp(4), dp(4), dp(4))
             layoutParams = FrameLayout.LayoutParams(dp(196), ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(56) }
         }
-        menu.addView(menuItem("截屏识别一次") { root?.removeView(menu); onOcrCapture?.invoke() })
+        if (onOcrCapture != null) {
+            menu.addView(menuItem("截屏识别一次") { root?.removeView(menu); onOcrCapture?.invoke() })
+        }
+        if (onInspectCapture != null) {
+            menu.addView(menuItem("核对本次采集") { root?.removeView(menu); onInspectCapture?.invoke() })
+        }
         menu.addView(menuItem("把当前会话存为联系人") { onSaveContact?.invoke(); root?.removeView(menu) })
         menu.addView(menuItem("打开设置") { openSettings(); root?.removeView(menu) })
         menu.addView(menuItem("隐藏助手（本次）") { hide() })
@@ -297,6 +306,19 @@ class OverlayController(private val ctx: Context) {
         }
     }
 
+    fun showCapturePreview(snapshot: io.github.liaong13.dialogueroute.core.ChatSnapshot) {
+        ensureRoot()
+        val views = ArrayList<View>()
+        views.add(line("Xposed 本次采集 · ${snapshot.messages.size} 条", "#111827", 14f, true))
+        snapshot.messages.takeLast(6).forEach { message ->
+            views.add(line("${if (message.side == "me") "我" else "对方"}：${message.text}",
+                "#374151", 12f))
+        }
+        views.add(bigButton("分析当前对话") { onManualAnalyze?.invoke() })
+        setContent(views)
+        if (!expanded) toggle()
+    }
+
     /**
      * Drop whatever judgment/candidates/note belonged to the previous
      * conversation. Call this before showing anything for a different chat
@@ -308,6 +330,7 @@ class OverlayController(private val ctx: Context) {
     fun resetForNewConversation() {
         lastJudgment = null
         lastFill = null
+        pendingReplies = null
         noteText = null
         replyError = null
         contentBox?.removeAllViews()
@@ -325,8 +348,11 @@ class OverlayController(private val ctx: Context) {
 
     fun showLoading() {
         ensureRoot(); bubble?.alpha = 1f
+        lastJudgment = null
+        lastFill = null
         ctxNotes = 0; ctxHistory = 0   // counts for the round that is starting
         replyError = null              // this round has not failed (yet)
+        pendingReplies = null
         setContent(listOf(hint("分析中…")))
         if (!expanded) toggle()
     }
@@ -357,13 +383,16 @@ class OverlayController(private val ctx: Context) {
     }
 
     fun showJudgment(a: Analysis) {
-        lastJudgment = a
-        render(a, generating = true)
+        val replies = pendingReplies
+        val combined = if (replies == null) a else a.copy(rankedReplies = replies)
+        lastJudgment = combined
+        render(combined, generating = replies == null)
     }
 
     fun showReplies(ranked: List<RankedReply>, error: String? = null, onFill: (String) -> Unit) {
         lastFill = onFill
         replyError = error
+        pendingReplies = ranked
         val a = lastJudgment?.copy(rankedReplies = ranked) ?: return
         lastJudgment = a
         render(a, generating = false)

@@ -5,7 +5,7 @@
 - 默认用简体中文沟通，代码、命令和日志关键字保留原文。
 - 本仓库是“对话攻略（Dialogue Route）”，基于上游 Jev 聊天助手的独立 fork。应用包名为 `io.github.liaong13.dialogueroute`。
 - 这是单模块 Android Gradle 应用，不是 AOSP System/Vendor 工程；不要套用平台分仓排查流程。
-- 技术栈是 Kotlin + 传统 Android View，无 Compose 或 Web 前端构建链。版本以 Gradle 文件为准；当前使用 JDK 17、compileSdk/targetSdk 35、minSdk 30，仅打包 `arm64-v8a`。
+- 技术栈是 Kotlin + 传统 Android View，无 Compose 或 Web 前端构建链。版本以 Gradle 文件为准；当前使用 JDK 17、compileSdk 37、targetSdk 35、minSdk 30，仅打包 `arm64-v8a`。
 - 开始任务先读 [README.md](README.md) 和 [开发指南](docs/development.md)，检查 `git status --short` 与目标文件已有 diff。新增但未跟踪的源码也是当前工作区的一部分，不能只审查 `git diff`。
 - 用户只要求分析、检查或评审时，默认只读业务代码；明确要求修复时才修改。保留已有本地改动，使用最小补丁，不自动提交、推送或清理工作区。
 
@@ -32,10 +32,10 @@
 
 ## 必须保持的行为边界
 
-- 不 hook、不修改目标聊天应用、不读取其数据库。
+- 当前已有无障碍与 OCR 路径，以及微信 8.0.78（3180）的 Xposed 文本采集实现；具体已验证范围见[当前开发状态](docs/current-development-status.md)。V1.4 按[多平台 libxposed 方案](docs/v1.4-libxposed-multiplatform-design.md)继续推进，优先 libxposed，按 QQ → 微信 → X → 飞书实施，以功能效果为先；允许有范围的宿主会话/消息模型 hook、当前会话内部查询、必要的参数/结果适配及用户触发的草稿填入，不以“非侵入性/只读 View”限制实现。正文获取限当前活动会话，不导出整库或登录凭据；未列为已验证的功能不得宣称验机通过。
 - 回复只复制或填入，发送必须由用户手动完成；不操作转账、红包、收款。
 - 平台适配器的三态契约：`null` 表示非聊天页；空消息的 `ChatSnapshot` 表示聊天页无正文、可触发 OCR；非空消息表示正常采集。不要用普通搜索框代替聊天页判据。
-- 新平台实现 `ChatAppAdapter` 并注册到 `ChatCaptureService.adapters`；平台特定节点规则留在对应适配器。
+- 无障碍平台实现 `ChatAppAdapter` 并注册到 `ChatCaptureService.adapters`，平台节点规则留在对应适配器；后续 libxposed 平台实现独立 `HostPlugin`，不强行依赖无障碍节点。宿主内部类/方法必须按目标版本取证，不凭旧注释复制。
 - 会话身份、内容去重和请求生命周期应分开处理。修改异步流程时，检查切换会话、离开聊天页、关闭助手、销毁服务，以及判断/回复/OCR 回调乱序；填入前核对目标仍是原会话。
 - 截屏保留限频、失败退避、超时恢复和资源释放；节点矩形是屏幕坐标，截图可能是带原点偏移的窗口坐标，不混用。
 - 当前自动 OCR 使用随包 ML Kit 中文模型。`VisionClient` 有设置页连通测试，不能仅凭配置项存在就宣称已接入采集流程。

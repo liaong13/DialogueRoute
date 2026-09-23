@@ -27,15 +27,16 @@ object PowerSetup {
 
     data class Readiness(
         val accessibility: Boolean,
+        val xposed: Boolean,
         val overlay: Boolean,
         val key: Boolean,
         val batteryOptimizationExempt: Boolean
     ) {
-        val ready: Boolean get() = accessibility && overlay && key
+        val ready: Boolean get() = (accessibility || xposed) && overlay && key
 
         val missing: List<String>
             get() = buildList {
-                if (!accessibility) add("无障碍权限")
+                if (!accessibility && !xposed) add("无障碍权限或已验证的 Xposed 采集")
                 if (!overlay) add("悬浮窗权限")
                 if (!key) add("判断接口密钥")
             }
@@ -48,6 +49,7 @@ object PowerSetup {
         accessibility: Boolean,
         overlay: Boolean,
         key: Boolean,
-        batteryOptimizationExempt: Boolean
-    ): Readiness = Readiness(accessibility, overlay, key, batteryOptimizationExempt)
+        batteryOptimizationExempt: Boolean,
+        xposed: Boolean = false
+    ): Readiness = Readiness(accessibility, xposed, overlay, key, batteryOptimizationExempt)
 }

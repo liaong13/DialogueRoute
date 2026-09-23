@@ -15,6 +15,7 @@ class PowerSetupTest {
     fun `battery exemption does not gate the basic prerequisites`() {
         assertTrue(PowerSetup.verdict(true, true, true, true).ready)
         assertFalse(PowerSetup.verdict(false, true, true, true).ready)
+        assertTrue(PowerSetup.verdict(false, true, true, true, xposed = true).ready)
         assertFalse(PowerSetup.verdict(true, false, true, true).ready)
         assertFalse(PowerSetup.verdict(true, true, false, true).ready)
         assertTrue(
@@ -26,7 +27,7 @@ class PowerSetupTest {
     fun `missing lists only what is actually missing, in setup order`() {
         assertEquals(emptyList<String>(), PowerSetup.verdict(true, true, true, true).missing)
         assertEquals(
-            listOf("无障碍权限", "悬浮窗权限", "判断接口密钥"),
+            listOf("无障碍权限或已验证的 Xposed 采集", "悬浮窗权限", "判断接口密钥"),
             PowerSetup.verdict(false, false, false, false).missing)
         assertEquals(
             listOf("判断接口密钥"),

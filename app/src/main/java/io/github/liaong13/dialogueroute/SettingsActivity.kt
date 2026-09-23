@@ -29,6 +29,8 @@ import io.github.liaong13.dialogueroute.core.kb.KbStore
 import io.github.liaong13.dialogueroute.jev.JudgeClient
 import io.github.liaong13.dialogueroute.jev.ReplyClient
 import io.github.liaong13.dialogueroute.jev.VisionClient
+import io.github.liaong13.dialogueroute.xposed.XposedProbeBridge
+import io.github.liaong13.dialogueroute.xposed.XposedCaptureRuntime
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
@@ -42,6 +44,7 @@ class SettingsActivity : AppCompatActivity() {
     private val ink = Color.parseColor("#111827")
     private val sub = Color.parseColor("#6B7280")
     private val pillOff = Color.parseColor("#EEF1F5")
+    private var xposedStatus: TextView? = null
 
     /** Selected provider index per card, held so Save can read it back. */
     private var judgeProviderIdx = 0
@@ -65,6 +68,17 @@ class SettingsActivity : AppCompatActivity() {
         scroll.addView(root)
 
         root.addView(header("设置"))
+
+        root.addView(section("采集模式"))
+        val xposedCard = card()
+        xposedCard.addView(cardTitle("Xposed 增强模式"))
+        val xposedRow = toggleRow("使用 Xposed 模式", prefs.xposedEnabled)
+        xposedCard.addView(xposedRow)
+        xposedCard.addView(text("保存后，在框架中启用本模块并勾选微信，重新打开微信聊天页。", 11f, sub))
+        xposedStatus = resultText().also { xposedCard.addView(it) }
+        xposedCard.addView(text("当前仅适配微信 8.0.78（versionCode 3180）；正文采集和填入以状态及设备实测为准。", 11f, sub))
+        root.addView(xposedCard)
+        updateXposedStatus()
 
         // =================== 接口 ===================
         root.addView(section("接口"))
@@ -380,6 +394,11 @@ class SettingsActivity : AppCompatActivity() {
             prefs.ocrFallback = (ocrFallbackRow.tag as? Boolean) ?: true
             prefs.ocrAutoAnalyze = (ocrAutoRow.tag as? Boolean) ?: false
             prefs.contextEnabled = (ctxRow.tag as? Boolean) ?: false
+            if (prefs.xposedEnabled != ((xposedRow.tag as? Boolean) ?: false)) {
+                prefs.xposedEnabled = (xposedRow.tag as? Boolean) ?: false
+                XposedCaptureRuntime.get(this).onChatClosed()
+            }
+            updateXposedStatus()
             prefs.contextHistoryCount =
                 ctxCountEdit.text.toString().trim().toIntOrNull()?.coerceIn(0, 100) ?: 30
             prefs.overlayOpacity = seek.progress + 60
@@ -393,6 +412,24 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var judgeKeyEdit: EditText
     private lateinit var replyKeyEdit: EditText
     private lateinit var visionKeyEdit: EditText
+
+    override fun onResume() {
+        super.onResume()
+        updateXposedStatus()
+    }
+
+    private fun updateXposedStatus() {
+        xposedStatus?.text = when {
+            !prefs.xposedEnabled -> "状态：应用内开关未开启（与框架模块开关独立）"
+            XposedProbeBridge.isContentActive(this) -> "状态：微信 Xposed 正文采集运行中"
+            (XposedProbeBridge.lastContentAgeMs(this) ?: Long.MAX_VALUE) < 600_000L ->
+                "状态：最近成功读取微信正文（当前未运行）"
+            XposedProbeBridge.isChatProbeActive(this) -> "状态：探针已命中，等待正文"
+            (XposedProbeBridge.lastProbeAgeMs(this) ?: Long.MAX_VALUE) < 600_000L ->
+                "状态：最近成功命中（当前未运行）"
+            else -> "状态：等待微信聊天页探针命中"
+        }
+    }
 
     private fun providerOf(idx: Int) = when (idx) {
         1 -> Prefs.PROVIDER_TYPESAFE

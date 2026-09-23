@@ -2,6 +2,7 @@ package io.github.liaong13.dialogueroute.core
 
 import android.content.Context
 import android.util.Log
+import io.github.liaong13.dialogueroute.xposed.XposedProbeBridge
 
 /**
  * App-private config store. Holds the three API routes (judge / reply / vision),
@@ -157,6 +158,16 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         get() = sp.getBoolean(K_ENABLED, true)
         set(v) = sp.edit().putBoolean(K_ENABLED, v).apply()
 
+    /** Opt in to the Xposed probe. A setting change invalidates old host heartbeats. */
+    var xposedEnabled: Boolean
+        get() = sp.getBoolean(K_XPOSED_ENABLED, false)
+        set(v) = sp.edit().putBoolean(K_XPOSED_ENABLED, v)
+            .remove(XposedProbeBridge.HEARTBEAT_KEY)
+            .remove(XposedProbeBridge.ACTIVE_KEY)
+            .remove(XposedProbeBridge.CONTENT_HEARTBEAT_KEY)
+            .remove(XposedProbeBridge.CONTENT_ACTIVE_KEY)
+            .remove(XposedProbeBridge.RESUME_KEY).apply()
+
     /**
      * Conversation whitelist: titles the assistant is allowed to act on. Empty
      * set means "all conversations". Stored as a plain string set.
@@ -248,6 +259,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         private const val K_OCR_FALLBACK = "ocr_fallback"
         private const val K_OCR_AUTO = "ocr_auto_analyze"
         private const val K_REL = "relationship"
+        private const val K_XPOSED_ENABLED = XposedProbeBridge.ENABLED_KEY
         private const val K_ENABLED = "enabled"
         private const val K_WHITELIST = "whitelist"
         private const val K_OPACITY = "overlay_opacity"

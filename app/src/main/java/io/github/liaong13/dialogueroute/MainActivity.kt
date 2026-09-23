@@ -20,6 +20,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import io.github.liaong13.dialogueroute.core.PowerSetup
 import io.github.liaong13.dialogueroute.core.Prefs
+import io.github.liaong13.dialogueroute.xposed.XposedProbeBridge
 import kotlin.math.roundToInt
 
 /**
@@ -74,7 +75,9 @@ class MainActivity : AppCompatActivity() {
         val overlay = Settings.canDrawOverlays(this)
         val key = prefs.hasKey()   // judge route key: the one analysis cannot run without
         val batteryExempt = isBatteryOptimizationExempt()
-        val verdict = PowerSetup.verdict(a11y, overlay, key, batteryExempt)
+        val xposed = prefs.xposedEnabled &&
+            (XposedProbeBridge.lastContentAgeMs(this) ?: Long.MAX_VALUE) < 600_000L
+        val verdict = PowerSetup.verdict(a11y, overlay, key, batteryExempt, xposed)
 
         // Readiness card
         container.addView(statusCard(verdict))
@@ -100,7 +103,7 @@ class MainActivity : AppCompatActivity() {
 
         // Actions
         container.addView(sectionLabel("其他"))
-        container.addView(actionRow("设置", "密钥 · 模型 · 关系 · 透明度 · 会话白名单") {
+        container.addView(actionRow("设置", "Xposed 模式 · 密钥 · 模型 · 关系 · 透明度 · 会话白名单") {
             startActivity(Intent(this, SettingsActivity::class.java))
         })
 
@@ -124,6 +127,7 @@ class MainActivity : AppCompatActivity() {
         head.addView(text(if (v.ready) "攻略准备完成" else "尚未就绪", 16f, if (v.ready) green else ink, bold = true))
         c.addView(head)
         c.addView(checkLine("无障碍", v.accessibility))
+        c.addView(checkLine("Xposed 微信正文", v.xposed, okWord = "已验证", noWord = "未验证"))
         c.addView(checkLine("悬浮窗", v.overlay))
         c.addView(checkLine("密钥", v.key, okWord = "已设", noWord = "未设"))
         if (v.missing.isNotEmpty()) {

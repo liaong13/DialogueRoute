@@ -24,13 +24,21 @@
 
 密钥保存在应用私有的 SharedPreferences 中，目前不是加密存储。分析时，聊天内容及启用的知识库上下文会发送给所配置的模型服务；本地 OCR 使用随包提供的 ML Kit 模型。聊天历史默认关闭，启用后保存在应用私有目录。请自行确认所配置服务的数据处理方式。
 
+## V1.4 Xposed 进度
+
+计划基于 libxposed 增加多平台增强模式，按 **QQ → 微信 → X → 飞书** 推进。同一个“对话攻略”APK 同时提供普通应用和 Xposed 模块入口；在兼容的 KernelSU + Zygisk Next + LSPosed 环境中获取当前会话的结构化消息、更新及发送者，并支持用户触发的宿主输入框填入。发送仍由用户手动完成。
+
+增强模式需在框架和应用设置中分别启用；已适配平台优先使用 Xposed 数据，无障碍与可用的本地 OCR 保留为兼容路径。微信 8.0.78（3180）的当前会话文本读取、分析、悬浮窗及草稿填入已接入代码；Android 17 测试机已验证模块加载、聊天页命中、非空正文心跳和主页“已验证”状态。截图与无障碍层在该机上无法取得微信正文；用户已通过悬浮窗“核对本次采集”确认一个测试会话最近 6 条正文及“我/对方”方向一致。草稿填入与模型结果尚未端到端验证。其他消息类型和平台仍待适配。API 102、构建要求、四平台适配和阶段验收见 [V1.4 多平台 libxposed 方案](docs/v1.4-libxposed-multiplatform-design.md)。
+
+换电脑继续开发时先看[当前开发状态](docs/current-development-status.md)。
+
 ## 构建
 
-环境：JDK 17、Android SDK Platform 35；Gradle 使用仓库自带的 Wrapper。SDK 路径通过 Android Studio 或本机 `local.properties` 配置。
+环境：JDK 17 或 25、Android SDK Platform 37；Gradle 使用仓库自带的 Wrapper。SDK 路径通过 Android Studio 或本机 `local.properties` 配置。
 
 ```bash
-git clone https://github.com/liaong13/jev-chat-jarvis.git
-cd jev-chat-jarvis
+git clone https://github.com/liaong13/DialogueRoute.git
+cd DialogueRoute
 ./gradlew :app:assembleDebug
 ```
 

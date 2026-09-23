@@ -9,6 +9,10 @@
     <!-- 仅在用户点击设置入口时申请系统电池优化豁免，不代表厂商后台限制已解除。 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <queries>
+        <package android:name="com.tencent.mm" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -32,6 +36,11 @@
         <activity
             android:name=".KnowledgeActivity"
             android:exported="false" />
+
+        <provider
+            android:name=".xposed.XposedProbeProvider"
+            android:authorities="io.github.liaong13.dialogueroute.xposed.probe"
+            android:exported="true" />
 
         <service
             android:name="com.google.android.accessibility.selecttospeak.SelectToSpeakService"

@@ -20,8 +20,10 @@ import io.github.liaong13.dialogueroute.core.kb.ContextBuilder
 import io.github.liaong13.dialogueroute.core.kb.KbStore
 import io.github.liaong13.dialogueroute.jev.JevClient
 import io.github.liaong13.dialogueroute.overlay.OverlayController
+import io.github.liaong13.dialogueroute.xposed.XposedProbeBridge
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
+import java.lang.ref.WeakReference
 
 /**
  * The live capture service (registered under a disguised class name so WeChat
@@ -85,6 +87,7 @@ open class ChatCaptureService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         prefs = Prefs(this)
+        activeInstance = WeakReference(this)
         overlay = OverlayController(this)
         overlay?.onManualAnalyze = {
             currentSnapshot?.let { pendingSnapshot = it; runAnalysis() }
@@ -157,6 +160,10 @@ open class ChatCaptureService : AccessibilityService() {
     }
 
     private fun maybeCapture() {
+        if (prefs.xposedEnabled && XposedProbeBridge.isContentActive(this)) {
+            overlay?.hide()
+            return
+        }
         val root = rootInActiveWindow ?: return
         val pkg = root.packageName?.toString()
         // Apps with no adapter are never handled automatically (v1.3 revision):
@@ -557,6 +564,7 @@ open class ChatCaptureService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (activeInstance?.get() === this) activeInstance = null
         // Tear the overlay down and cut its callback so a stale button tap can
         // never call back into this dead instance.
         overlay?.onManualAnalyze = null
@@ -568,6 +576,16 @@ open class ChatCaptureService : AccessibilityService() {
     }
 
     companion object {
+        @Volatile private var activeInstance: WeakReference<ChatCaptureService>? = null
+
+        fun hideOverlayForXposed() {
+            activeInstance?.get()?.let { service ->
+                service.main.post {
+                    if (service.prefs.xposedEnabled) service.overlay?.hide()
+                }
+            }
+        }
+
         private const val TAG = "DIALOGUEROUTE"
 
         /** Whole-screen OCR keeps the middle: no action bar, no input area. */

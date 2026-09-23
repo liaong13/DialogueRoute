@@ -3,7 +3,6 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 // 签名配置由环境变量显式指定；未配置时生成未签名的 release 包。
@@ -20,7 +19,7 @@ val releaseProps = System.getenv("DIALOGUE_ROUTE_KEYSTORE_PROPS")?.takeIf { it.i
 
 android {
     namespace = "io.github.liaong13.dialogueroute"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.liaong13.dialogueroute"
@@ -66,13 +65,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 }
 
 dependencies {
+    // 由框架在宿主进程提供，应用正常启动时不加载这些类。
+    compileOnly("io.github.libxposed:api:102.0.0")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
