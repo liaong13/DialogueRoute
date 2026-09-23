@@ -27,7 +27,6 @@
 - 清单为 `app/src/main/AndroidManifest.xml`，资源位于 `app/src/main/res/`。
 - 无障碍入口有意保留 `app/src/main/java/com/google/android/accessibility/selecttospeak/SelectToSpeakService.kt`；它继承业务服务。不要随业务包名迁移而直接重命名，修改时同时核对 Manifest、配置 XML 和主页权限检测。
 - JVM 测试位于 `app/src/test/java/io/github/liaong13/dialogueroute/`。
-- `tools/jev/` 是独立 Python 校准工具，入口和依赖见其 README，不参与 APK 构建。
 - `docs/archive/` 保存上游历史资料。不能把其中任务分工、机器路径、设备测试结论、发布渠道作为当前开发指令或本 fork 已验证结果。APK 构建产物不入库，新版本通过本仓库 Releases 分发。保留 LICENSE、NOTICE 和原作者归属。
 
 ## 必须保持的行为边界

@@ -73,10 +73,10 @@ DIALOGUE_ROUTE_KEYSTORE_PROPS=/absolute/path/to/release.properties ./gradlew :ap
 
 设备验收应覆盖聊天页和列表页识别、空消息 OCR、悬浮窗隐藏与恢复、回复填入后不发送。记录设备、系统、聊天应用版本和复现步骤；历史记录不能代替当前设备验证。
 
-Python 校准工具见 [tools/jev/README.md](../tools/jev/README.md)。校准会调用远端接口并消耗额度，不属于默认静态检查。
-
 ## 上游资料
 
 [archive/](archive/) 保存上游探针设计、旧验收标准、v1.3 计划和任务记录，仅用于理解历史背景。其中机器路径、发布步骤、测试结论和任务分工可能已经过期。
+
+上游独立 Python 校准工具已移除，不参与当前应用的构建或测试；历史文档中的工具路径与命令不再适用。旧脚本与标注样本可从 Git 历史恢复。后续如需模型质量校准，应以应用实际使用的 `JevQuestions`、模型配置和知识库上下文构造为准。
 
 源码仓库不再保留上游历史 APK，新版本产物通过本仓库 Releases 分发。LICENSE、NOTICE、贡献者名单保留原始归属。

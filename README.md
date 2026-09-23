@@ -57,7 +57,6 @@ Release 签名配置及开发入口见 [开发指南](docs/development.md)。APK
 | `app/src/main/java/io/github/liaong13/dialogueroute/jev/` | Jev 模型客户端、题目集与 HTTP 封装 |
 | `app/src/main/java/io/github/liaong13/dialogueroute/overlay/` | 悬浮窗与回复选项 UI |
 | `app/src/main/java/io/github/liaong13/dialogueroute/core/` | 配置、数据模型、知识库和上下文 |
-| `tools/jev/` | Python 题目校准工具 |
 | `docs/` | 当前开发说明与上游历史文档 |
 
 ## 来源与许可

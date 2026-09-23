@@ -6,10 +6,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Fixed Jev question set, ported verbatim from tools/jev/questions.py (the
- * wording that passed calibration). Instructions/criteria in English; chat text
- * stays Chinese. The state `from` field uses "me"/"other" (the instructions
- * already refer to "the other person" throughout).
+ * 题目集最初移植自上游 Jev 校准工具，现由应用独立维护。
+ * instructions/criteria 使用英文，聊天正文保留中文；state 的 from 字段使用
+ * "me"/"other"，与题目中 "the other person" 的称呼保持一致。
  */
 object JevQuestions {
 
