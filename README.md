@@ -44,7 +44,7 @@ cd DialogueRoute
 
 Windows 使用 `gradlew.bat :app:assembleDebug`。输出为 `app/build/outputs/apk/debug/app-debug.apk`。
 
-Release 签名配置及开发入口见 [开发指南](docs/development.md)。仓库已有的 `apk/jev-assistant-v1.3-release.apk` 是继承自上游的历史产物，不包含本 fork 后续修改；新版本产物应通过本仓库 Releases 分发。
+Release 签名配置及开发入口见 [开发指南](docs/development.md)。APK 构建产物不纳入源码仓库，新版本产物通过本仓库 Releases 分发。
 
 应用包名为 `io.github.liaong13.dialogueroute`。它与上游包是两个独立应用，系统不会迁移上游包中的密钥、设置或聊天历史。
 

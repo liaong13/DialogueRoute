@@ -79,4 +79,4 @@ Python 校准工具见 [tools/jev/README.md](../tools/jev/README.md)。校准会
 
 [archive/](archive/) 保存上游探针设计、旧验收标准、v1.3 计划和任务记录，仅用于理解历史背景。其中机器路径、发布步骤、测试结论和任务分工可能已经过期。
 
-已有 APK 来自上游，不是本 fork 的新版本产物。LICENSE、NOTICE、贡献者名单保留原始归属。
+源码仓库不再保留上游历史 APK，新版本产物通过本仓库 Releases 分发。LICENSE、NOTICE、贡献者名单保留原始归属。
