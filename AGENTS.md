@@ -5,7 +5,7 @@
 - 默认用简体中文沟通，代码、命令和日志关键字保留原文。
 - 本仓库是“对话攻略（Dialogue Route）”，基于上游 Jev 聊天助手的独立 fork。应用包名为 `io.github.liaong13.dialogueroute`。
 - 这是单模块 Android Gradle 应用，不是 AOSP System/Vendor 工程；不要套用平台分仓排查流程。
-- 技术栈是 Kotlin + 传统 Android View，无 Compose 或 Web 前端构建链。版本以 Gradle 文件为准；当前使用 JDK 17、compileSdk 37、targetSdk 35、minSdk 30，仅打包 `arm64-v8a`。
+- 技术栈是 Kotlin + Compose/MIUIX 主界面，悬浮窗仍使用 Android View；无 Web 前端构建链。版本以 Gradle 文件为准；当前使用 JDK 17、compileSdk 37、targetSdk 35、minSdk 30，仅打包 `arm64-v8a`。
 - 开始任务先读 [README.md](README.md) 和 [开发指南](docs/development.md)，检查 `git status --short` 与目标文件已有 diff。新增但未跟踪的源码也是当前工作区的一部分，不能只审查 `git diff`。
 - 用户只要求分析、检查或评审时，默认只读业务代码；明确要求修复时才修改。保留已有本地改动，使用最小补丁，不自动提交、推送或清理工作区。
 
@@ -15,7 +15,7 @@
 
 | 路径 | 职责 |
 | --- | --- |
-| `MainActivity.kt`、`SettingsActivity.kt`、`KnowledgeActivity.kt` | 主界面、模型配置、知识库编辑 |
+| `MiuixActivity.kt`、`MiuixSettings.kt`、`MiuixKnowledge.kt` | 主界面、模型配置、知识库编辑 |
 | `capture/ChatCaptureService.kt` | 无障碍采集分发、分析调度、回复填入 |
 | `capture/*Adapter.kt`、`capture/ChatNodeHelpers.kt` | 各聊天平台节点解析与共享辅助逻辑 |
 | `capture/ocr/` | 截屏、坐标映射、本地 ML Kit OCR |

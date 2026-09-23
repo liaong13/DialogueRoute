@@ -10,7 +10,7 @@ Codex 的仓库开发约定统一维护在根目录 [AGENTS.md](../AGENTS.md)。
 - 配置与历史数据：`core/Prefs.kt`、`core/kb/`。
 - 采集分发：`capture/ChatCaptureService.kt`。
 - 模型调用：`jev/JudgeClient.kt`、`ReplyClient.kt`、`VisionClient.kt`。
-- UI：`MainActivity.kt`、`SettingsActivity.kt`、`KnowledgeActivity.kt` 与 `overlay/`。
+- UI：`MiuixActivity.kt`、`MiuixSettings.kt`、`MiuixKnowledge.kt` 与 `overlay/`。
 
 产品名为“对话攻略”，英文副标为“Dialogue Route”，包名为 `io.github.liaong13.dialogueroute`。包名与上游不同，因此会作为独立应用安装；旧包的配置和私有数据不会自动迁移。
 

@@ -60,7 +60,7 @@ private fun parseXDesc(desc: String): Pair<String, String>? {
  * it out. An attachment row ("All-In：附加的帖子。。") nests the quoted post's own
  * TextViews; we only take the row View's own desc, never its children.
  *
- * Every screen runs under the same MainActivity, so "are we in a DM thread" can
+ * Every screen runs under the same host Activity, so "are we in a DM thread" can
  * only be answered by the tree: a thread has the message EditText, the DM list
  * does not. The list's rows look similar but read
  * "All-In, @all_in_2026, 你这个说的就是那…", so ", @" is an extra guard.

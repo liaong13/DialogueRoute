@@ -1,0 +1,9 @@
+<resources>
+    <color name="dr_accent">#B6BEC9</color>
+    <color name="dr_container">#34383F</color>
+    <color name="dr_surface">#1C1E22</color>
+    <color name="dr_text">#F3F4F6</color>
+    <color name="dr_subtext">#A5AAB3</color>
+    <color name="dr_on_accent">#101114</color>
+    <bool name="dr_light_system_bars">false</bool>
+</resources>
