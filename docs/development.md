@@ -2,7 +2,7 @@
 
 Codex 的仓库开发约定统一维护在根目录 [AGENTS.md](../AGENTS.md)。
 
-文档同步日期：2026-09-24。完整入口见 [文档索引](README.md)，当天提交与统计见 [2026-09-24 变更记录](daily-changes-2026-09-24.md)。
+文档同步日期：2026-09-25。完整入口见 [文档索引](README.md)，此前提交与统计见 [2026-09-24 变更记录](daily-changes-2026-09-24.md)。
 
 ## 工程入口
 
@@ -21,7 +21,7 @@ Codex 的仓库开发约定统一维护在根目录 [AGENTS.md](../AGENTS.md)。
 
 当前 Gradle 配置为 `versionName=1.3`、`versionCode=4`，V1.4 是开发方案名称，尚未更新应用版本号。使用 JDK 17 或 25、SDK Platform 37、Gradle Wrapper 9.7.1、AGP 9.4.1；Java 源码/目标级别为 17，compileSdk 37、targetSdk 35、minSdk 30，仅包含 `arm64-v8a`。
 
-主界面与悬浮窗已启用 Compose，Compose 插件为 2.4.0、BOM 为 2026.09.00、Activity Compose 为 1.13.0、MIUIX 为 0.9.4；版本以根目录、应用 Gradle 配置和版本目录为准。Manifest 的唯一 Activity 为 `MiuixActivity`，主页、知识库、设置使用内部页签，外部入口通过 `EXTRA_TAB` 选择页签。旧 `MainActivity`、`SettingsActivity`、`KnowledgeActivity` 和 `Insets.kt` 已删除。
+主界面与悬浮窗已启用 Compose Material 3，Compose 插件为 2.4.0、BOM 为 2026.09.00、Activity Compose 为 1.13.0；版本以根目录、应用 Gradle 配置和版本目录为准。Manifest 的唯一 Activity 仍为 `MiuixActivity`，主页、知识库、设置使用内部页签，外部入口通过 `EXTRA_TAB` 选择页签。旧 `MainActivity`、`SettingsActivity`、`KnowledgeActivity` 和 `Insets.kt` 已删除。
 
 设置修改需点击“保存设置”；未保存时切换页签或返回会提示继续编辑或放弃修改。外观设置保存到 `Prefs.themeMode`，支持 `light`、`dark`、`system`，缺省或非法值回退浅色。主界面、系统栏与 Compose 悬浮窗共用该选择，悬浮窗监听偏好及系统配置变化更新配色。主题回归需覆盖已展开面板、跟随系统、窗口隐藏后重开，以及监听器释放。
 
