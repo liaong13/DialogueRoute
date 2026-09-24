@@ -11,7 +11,7 @@
 - 微信、QQ、X、飞书的平台采集适配器；节点无法提供正文时支持截屏和本地 OCR。
 - 判断、回复、视觉三路模型接口可分别配置。
 - 悬浮窗以“剧情判断 + 回复选项”的方式展示分析结果，本地知识库和联系人为分析补充上下文。
-- 主界面采用 Compose + MIUIX，提供主页、知识库、设置三个页签；悬浮窗继续使用 Android View。默认浅色，可在设置中选择深色或跟随系统，保存后同步应用与悬浮窗配色。
+- 主界面与悬浮窗采用 Compose + MIUIX，提供主页、知识库、设置三个页签。默认浅色，可在设置中选择深色或跟随系统，保存后同步应用与悬浮窗配色。
 - Android 11（API 30）及以上；当前 APK 配置仅包含 `arm64-v8a`。
 - 聊天软件版本、界面语言和系统无障碍限制会影响采集效果；上游历史测试记录不代表本 fork 已完成设备验证。
 - OCR 只能识别可见区域，受保护窗口可能无法截屏；群聊、发言人识别和模型判断可能有误。
@@ -45,7 +45,7 @@ sh gradlew :app:assembleDebug
 
 | 路径 | 用途 |
 | --- | --- |
-| `app/` | Android 应用，Kotlin + Compose/MIUIX 主界面、View 悬浮窗 |
+| `app/` | Android 应用，Kotlin + Compose/MIUIX 主界面与悬浮窗 |
 | `app/src/main/java/io/github/liaong13/dialogueroute/capture/` | 平台适配器、无障碍服务、保活与 OCR |
 | `app/src/main/java/io/github/liaong13/dialogueroute/jev/` | Jev 模型客户端、题目集与 HTTP 封装 |
 | `app/src/main/java/io/github/liaong13/dialogueroute/overlay/` | 悬浮窗与回复选项 UI |

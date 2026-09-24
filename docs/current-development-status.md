@@ -10,15 +10,15 @@
 sh gradlew :app:assembleDebug :app:testDebugUnitTest
 ```
 
-Gradle Wrapper 为 9.4.1，AGP 为 9.2.1，应用使用 AGP 内置 Kotlin。调试 APK 位于 `app/build/outputs/apk/debug/app-debug.apk`；构建产物、`local.properties`、模型密钥和签名材料不入库。
+当前 Gradle Wrapper 为 9.7.1，AGP 为 9.4.1，应用使用 AGP 内置 Kotlin。调试 APK 位于 `app/build/outputs/apk/debug/app-debug.apk`；构建产物、`local.properties`、模型密钥和签名材料不入库。
 
-Windows 使用 `gradlew.bat :app:assembleDebug :app:testDebugUnitTest`。Compose 插件为 2.4.0、BOM 为 2026.09.00、MIUIX 为 0.9.3；应用版本仍为 `1.3 / versionCode 4`。
+Windows 使用 `gradlew.bat :app:assembleDebug :app:testDebugUnitTest`。Compose 插件为 2.4.0、BOM 为 2026.09.00、MIUIX 为 0.9.4；应用版本仍为 `1.3 / versionCode 4`。
 
 ## 2026-09-24 新增代码与仓库变化
 
-- `MiuixActivity` 统一主页、知识库、设置三个页签；主界面迁移为 Compose + MIUIX，旧三个 Activity 与 `Insets.kt` 已移除。悬浮窗继续使用 Android View。
+- `MiuixActivity` 统一主页、知识库、设置三个页签；主界面迁移为 Compose + MIUIX，旧三个 Activity 与 `Insets.kt` 已移除。悬浮窗随后也迁移为 Compose，见[悬浮窗功能恢复与紧凑界面](overlay-restoration-2026-09-24.md)。
 - 设置支持未保存离页提示；主题默认浅色，可选择深色或跟随系统，点击“保存设置”后通过 `Prefs.themeMode` 同步主界面、系统栏及悬浮窗。
-- 新增 `MiuixUi.kt`、`MiuixGlass.kt` 和 `OverlayViews.kt`，统一卡片、控件与配色；悬浮窗继续提供判断、候选回复、复制/填入及采集核对入口。
+- 新增 `MiuixUi.kt`、`MiuixGlass.kt` 和 `OverlayViews.kt`，统一主界面卡片、控件与配色；当前悬浮窗由 `OverlayController.kt` 和 `OverlayCompose.kt` 提供判断、候选回复、复制/填入及采集核对入口。
 - 移除上游站点与旧 APK；本次文档整理保留工作区已有的 README 精简及旧 CHANGELOG/CONTRIBUTORS 删除，保留 LICENSE、NOTICE 和上游来源。
 - 独立 Python 校准工具已在 `e7c5dd8` 移除，应用内题目集继续由 `JevQuestions` 维护。本次另外补充 LICENSE/NOTICE 的 fork 署名与来源，MIT 正文和上游声明保留。
 - 以上根据提交差异和当前代码核对；本次仅更新文档，未编译、未运行 JVM 测试、未验机。

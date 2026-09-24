@@ -8,6 +8,7 @@
 | [开发约定](../AGENTS.md) | 工作区、修改边界、静态检查与交付要求 |
 | [开发指南](development.md) | Compose/MIUIX 入口、主题、构建、签名及平台扩展 |
 | [当前开发状态](current-development-status.md) | 当前代码、历史设备验证、剩余验收和换机接续 |
+| [悬浮窗功能恢复与紧凑界面](overlay-restoration-2026-09-24.md) | v1.3 功能对照、当前工作区修复、图标与未验机边界 |
 | [2026-09-24 变更记录](daily-changes-2026-09-24.md) | 今天 5 次既有提交的统计、改动内容及文档整理范围 |
 | [V1.4 多平台设计](v1.4-libxposed-multiplatform-design.md) | 当前实施方向；通用架构规划不等同于已实现能力 |
 | [早期微信备用方案](v1.4-wechat-capture-plan.md) | 已被多平台设计取代的历史评估 |
