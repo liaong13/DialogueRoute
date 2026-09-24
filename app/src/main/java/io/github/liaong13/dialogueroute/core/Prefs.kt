@@ -73,7 +73,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         get() = sp.getString(K_REPLY_BASE, DEFAULT_REPLY_BASE) ?: DEFAULT_REPLY_BASE
         set(v) = sp.edit().putString(K_REPLY_BASE, v.trim()).apply()
 
-    /** Blank = fall back to [judgeKey]. */
+    /** A blank key only falls back for legacy settings on the same supplier. */
     var replyKey: String
         get() = sp.getString(K_REPLY_KEY, "") ?: ""
         set(v) = sp.edit().putString(K_REPLY_KEY, v.trim()).apply()
@@ -94,7 +94,7 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         get() = sp.getString(K_VISION_BASE, DEFAULT_VISION_BASE) ?: DEFAULT_VISION_BASE
         set(v) = sp.edit().putString(K_VISION_BASE, v.trim()).apply()
 
-    /** Blank = fall back to [replyKey] then [judgeKey]. */
+    /** A blank key only falls back for legacy settings on the same supplier. */
     var visionKey: String
         get() = sp.getString(K_VISION_KEY, "") ?: ""
         set(v) = sp.edit().putString(K_VISION_KEY, v.trim()).apply()
@@ -102,6 +102,47 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
     var visionModel: String
         get() = sp.getString(K_VISION_MODEL, DEFAULT_VISION_MODEL) ?: DEFAULT_VISION_MODEL
         set(v) = sp.edit().putString(K_VISION_MODEL, v.trim()).apply()
+
+    /** Provider editor state; the resolved route fields above remain the runtime contract. */
+    var modelProviders: String
+        get() = sp.getString(K_MODEL_PROVIDERS, "") ?: ""
+        set(v) = sp.edit().putString(K_MODEL_PROVIDERS, v).apply()
+
+    var judgeProviderId: String
+        get() = sp.getString(K_JUDGE_PROVIDER_ID, "") ?: ""
+        set(v) = sp.edit().putString(K_JUDGE_PROVIDER_ID, v).apply()
+
+    var replyProviderId: String
+        get() = sp.getString(K_REPLY_PROVIDER_ID, "") ?: ""
+        set(v) = sp.edit().putString(K_REPLY_PROVIDER_ID, v).apply()
+
+    var visionProviderId: String
+        get() = sp.getString(K_VISION_PROVIDER_ID, "") ?: ""
+        set(v) = sp.edit().putString(K_VISION_PROVIDER_ID, v).apply()
+
+    /** Publish the editor state and resolved runtime routes together. */
+    fun saveModelConfiguration(selection: ProviderSelection, judgeModel: String,
+                               replyModel: String, visionModel: String) {
+        val judge = selection.providers.first { it.id == selection.judgeId }
+        val reply = selection.providers.first { it.id == selection.replyId }
+        val vision = selection.providers.firstOrNull { it.id == selection.visionId }
+        sp.edit()
+            .putString(K_MODEL_PROVIDERS, ModelProvider.encode(selection.providers))
+            .putString(K_JUDGE_PROVIDER_ID, selection.judgeId)
+            .putString(K_REPLY_PROVIDER_ID, selection.replyId)
+            .putString(K_VISION_PROVIDER_ID, selection.visionId)
+            .putString(K_JUDGE_PROVIDER, judge.judgeMode())
+            .putString(K_JUDGE_BASE, judge.judgeBase())
+            .putString(K_JUDGE_KEY, judge.key.trim())
+            .putString(K_JUDGE_MODEL, judgeModel.trim())
+            .putString(K_REPLY_BASE, reply.chatBase())
+            .putString(K_REPLY_KEY, reply.key.trim())
+            .putString(K_REPLY_MODEL, replyModel.trim())
+            .putString(K_VISION_BASE, vision?.chatBase() ?: DEFAULT_VISION_BASE)
+            .putString(K_VISION_KEY, vision?.key?.trim() ?: "")
+            .putString(K_VISION_MODEL, visionModel.trim())
+            .apply()
+    }
 
     // -------------------------------------------------------- context (D)
 
@@ -128,8 +169,10 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     /** "mlkit" | "vision". */
     var ocrEngine: String
-        get() = sp.getString(K_OCR_ENGINE, OCR_MLKIT) ?: OCR_MLKIT
-        set(v) = sp.edit().putString(K_OCR_ENGINE, v.trim()).apply()
+        get() = sp.getString(K_OCR_ENGINE, OCR_MLKIT)
+            ?.takeIf { it == OCR_VISION } ?: OCR_MLKIT
+        set(v) = sp.edit().putString(K_OCR_ENGINE,
+            if (v == OCR_VISION) OCR_VISION else OCR_MLKIT).apply()
 
     /** Run generic OCR capture on apps with no dedicated adapter. */
     var ocrForUnknownApps: Boolean
@@ -219,11 +262,23 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
 
     // ------------------------------------------------------------- helpers
 
-    /** Reply route key, falling back to the judge key. */
-    fun effectiveReplyKey(): String = replyKey.ifBlank { judgeKey }
+    /** Legacy fallback is safe only when both routes use the same OpenRouter account. */
+    fun effectiveReplyKey(): String = replyKey.ifBlank {
+        if (modelProviders.isBlank() && judgeProvider == PROVIDER_OPENROUTER &&
+            judgeBaseUrl.trimEnd('/') == DEFAULT_JUDGE_BASE_OPENROUTER &&
+            replyBaseUrl.trimEnd('/') == DEFAULT_REPLY_BASE) judgeKey else ""
+    }
 
-    /** Vision route key, falling back to reply then judge. */
-    fun effectiveVisionKey(): String = visionKey.ifBlank { effectiveReplyKey() }
+    fun effectiveVisionKey(): String = visionKey.ifBlank {
+        if (modelProviders.isNotBlank()) return@ifBlank ""
+        val base = visionBaseUrl.ifBlank { DEFAULT_VISION_BASE }.trimEnd('/')
+        when {
+            base == replyBaseUrl.trimEnd('/') -> effectiveReplyKey()
+            base == DEFAULT_VISION_BASE && judgeProvider == PROVIDER_OPENROUTER &&
+                judgeBaseUrl.trimEnd('/') == DEFAULT_JUDGE_BASE_OPENROUTER -> judgeKey
+            else -> ""
+        }
+    }
 
     /** Full POST URL for the Jev decisions call, per provider. */
     fun judgeEndpoint(): String {
@@ -276,6 +331,10 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         private const val K_VISION_BASE = "vision_base_url"
         private const val K_VISION_KEY = "vision_key"
         private const val K_VISION_MODEL = "vision_model"
+        private const val K_MODEL_PROVIDERS = "model_providers"
+        private const val K_JUDGE_PROVIDER_ID = "judge_provider_id"
+        private const val K_REPLY_PROVIDER_ID = "reply_provider_id"
+        private const val K_VISION_PROVIDER_ID = "vision_provider_id"
         private const val K_CTX_ENABLED = "context_enabled"
         private const val K_CTX_COUNT = "context_history_count"
         private const val K_AUTO_SUMMARY = "auto_summary"
