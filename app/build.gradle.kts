@@ -74,19 +74,22 @@ android {
 
 dependencies {
     // 由框架在宿主进程提供，应用正常启动时不加载这些类。
-    compileOnly("io.github.libxposed:api:102.0.0")
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("com.google.android.material:material:1.14.0")
-    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
-    implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.3")
-    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.3")
-    implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.3")
+    compileOnly(libs.api)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.savedstate.ktx)
+    implementation(libs.material)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.miuix.ui)
+    implementation(libs.miuix.preference)
+    implementation(libs.miuix.icons)
     // On-device OCR. The *bundled* Chinese model (not the play-services variant):
     // it works on phones with no Google Play services and needs no model download.
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    implementation(libs.text.recognition.chinese)
 
-    testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.junit)
 }
