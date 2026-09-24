@@ -156,8 +156,7 @@ private fun DialogueApp(requestedTab: Int) {
                             Box(modifier = Modifier.widthIn(max = 680.dp).fillMaxSize()) {
                                 when (index) {
                                     0 -> HomeScreen(active = pager.currentPage == 0,
-                                        onOpenSettings = { requestPage(2) },
-                                        onOpenKnowledge = { requestPage(1) })
+                                        onOpenSettings = { requestPage(2) })
                                     1 -> KnowledgeScreen()
                                     else -> key(settingsRevision) { SettingsScreen(onDirtyChange = { settingsDirty = it }) }
                                 }
@@ -199,7 +198,7 @@ private fun BottomTabBar(selectedIndex: Int, onSelect: (Int) -> Unit) {
 }
 
 @Composable
-private fun HomeScreen(active: Boolean, onOpenSettings: () -> Unit, onOpenKnowledge: () -> Unit) {
+private fun HomeScreen(active: Boolean, onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember(context) { Prefs(context) }
     var enabled by remember { mutableStateOf(prefs.enabled) }
@@ -281,15 +280,5 @@ private fun HomeScreen(active: Boolean, onOpenSettings: () -> Unit, onOpenKnowle
                 }
             }
         }
-        item { SectionHeading("常用入口") }
-        item {
-            GlassCard(padding = PaddingValues(4.dp)) {
-                RoundedPreference(title = "模型与权限", summary = "配置接口、采集方式和后台运行",
-                    onClick = onOpenSettings)
-                RoundedPreference(title = "我的知识库", summary = "补充习惯、约定和联系人背景",
-                    onClick = onOpenKnowledge)
-            }
-        }
-        item { SupportingText("回复仅复制或填入，发送由你手动完成。") }
     }
 }
