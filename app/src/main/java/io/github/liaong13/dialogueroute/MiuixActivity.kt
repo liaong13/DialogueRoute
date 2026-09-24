@@ -11,21 +11,23 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -41,13 +43,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.core.view.WindowCompat
@@ -55,15 +65,9 @@ import io.github.liaong13.dialogueroute.core.PowerSetup
 import io.github.liaong13.dialogueroute.core.Prefs
 import io.github.liaong13.dialogueroute.xposed.XposedProbeBridge
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Contacts
-import top.yukonga.miuix.kmp.icon.extended.Settings
-import top.yukonga.miuix.kmp.icon.extended.VerticalSplit
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.darkColorScheme
-import top.yukonga.miuix.kmp.theme.lightColorScheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 
 class MiuixActivity : ComponentActivity() {
     private var requestedTab by mutableIntStateOf(0)
@@ -112,23 +116,8 @@ private fun DialogueApp(requestedTab: Int) {
             }
         }
     }
-    val colors = if (dark) darkColorScheme(
-        primary = Color(0xFFA8C9FA), primaryVariant = Color(0xFFA8C9FA),
-        onPrimary = Color(0xFF102D50), primaryContainer = Color(0xFF233B57),
-        background = Color(0xFF11151C), surface = Color(0xFF11151C),
-        surfaceVariant = Color(0xFF1D242E), surfaceContainer = Color(0xFF1D242E),
-        secondary = Color(0xFF233B57)
-    ) else lightColorScheme(
-        primary = Color(0xFF1769C2), primaryVariant = Color(0xFF1769C2),
-        onPrimary = Color.White,
-        primaryContainer = Color(0xFFE8F0FF), background = Color(0xFFF4F6FA),
-        onBackground = Color(0xFF202B3D), onSurface = Color(0xFF202B3D),
-        onSurfaceVariantSummary = Color(0xFF58667C),
-        surface = Color(0xFFEDF1F7), surfaceVariant = Color.White,
-        surfaceContainer = Color.White, secondary = Color(0xFFE8F0FF)
-    )
     CompositionLocalProvider(LocalAppDarkTheme provides dark) {
-        MiuixTheme(colors = colors) {
+        DialogueTheme(dark = dark) {
             val pager = rememberPagerState(initialPage = requestedTab, pageCount = { 3 })
             val scope = rememberCoroutineScope()
             var settingsDirty by remember { mutableStateOf(false) }
@@ -144,23 +133,31 @@ private fun DialogueApp(requestedTab: Int) {
             }
             BackHandler(enabled = settingsDirty && pager.currentPage == 2) { pendingDestination = -1 }
             GlassBackdrop {
-                Scaffold(
-                    containerColor = Color.Transparent,
-                    bottomBar = {
-                        BottomTabBar(pager.currentPage, ::requestPage)
-                    }
-                ) { padding ->
+                val navigationSource = rememberHazeState()
+                val density = LocalDensity.current
+                var bottomTabBarHeight by remember { mutableStateOf(0.dp) }
+                Box(Modifier.fillMaxSize()) {
                     HorizontalPager(state = pager, beyondViewportPageCount = 2, userScrollEnabled = !settingsDirty,
-                        modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) { index ->
+                        modifier = Modifier.fillMaxSize().hazeSource(navigationSource)) { index ->
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                             Box(modifier = Modifier.widthIn(max = 680.dp).fillMaxSize()) {
                                 when (index) {
                                     0 -> HomeScreen(active = pager.currentPage == 0,
                                         onOpenSettings = { requestPage(2) })
                                     1 -> KnowledgeScreen()
-                                    else -> key(settingsRevision) { SettingsScreen(onDirtyChange = { settingsDirty = it }) }
+                                    else -> key(settingsRevision) {
+                                        SettingsScreen(bottomTabBarHeight = bottomTabBarHeight,
+                                            onDirtyChange = { settingsDirty = it })
+                                    }
                                 }
                             }
+                        }
+                    }
+                    GlassSource(navigationSource) {
+                        Box(Modifier.align(Alignment.BottomCenter).onSizeChanged {
+                            bottomTabBarHeight = with(density) { it.height.toDp() }
+                        }) {
+                            BottomTabBar(pager.currentPage, ::requestPage)
                         }
                     }
                 }
@@ -186,13 +183,15 @@ private fun DialogueApp(requestedTab: Int) {
 
 @Composable
 private fun BottomTabBar(selectedIndex: Int, onSelect: (Int) -> Unit) {
-    val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = bottomInset + 8.dp),
+    Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp),
         contentAlignment = Alignment.Center) {
         Box(Modifier.widthIn(max = 480.dp).fillMaxWidth().padding(horizontal = 20.dp)) {
-            GlassTabs(tabs = listOf("主页", "知识库", "设置"), selectedTabIndex = selectedIndex,
+            GlassTabs(tabs = listOf("首页", "知识库", "设置"), selectedTabIndex = selectedIndex,
                 onTabSelected = onSelect,
-                icons = listOf(MiuixIcons.VerticalSplit, MiuixIcons.Contacts, MiuixIcons.Settings))
+                icons = listOf(AppIcons.Home, AppIcons.Knowledge, AppIcons.Settings),
+                selectedIcons = listOf(AppIcons.HomeSelected, AppIcons.KnowledgeSelected,
+                    AppIcons.SettingsSelected),
+                navigationBar = true)
         }
     }
 }
@@ -234,51 +233,122 @@ private fun HomeScreen(active: Boolean, onOpenSettings: () -> Unit) {
         prefs.xposedEnabled && (XposedProbeBridge.lastContentAgeMs(context) ?: Long.MAX_VALUE) < 600_000L
     }
     val verdict = PowerSetup.verdict(a11y, overlay, prefs.hasKey(), battery, xposed)
+    val dark = LocalAppDarkTheme.current
+    val captureTint = if (dark) Color(0xFFAFCBFF) else Color(0xFF3972BE)
+    val overlayTint = if (dark) Color(0xFF80D8D3) else Color(0xFF21817C)
+    val modelTint = if (dark) Color(0xFFB9B6FF) else Color(0xFF695FBD)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 112.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            PageHeading("对话攻略", "读懂对话，多一种回应的可能。")
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Box(Modifier.size(52.dp).glassSurface(radius = 16.dp)
+                    .background(Brush.linearGradient(listOf(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)))),
+                    contentAlignment = Alignment.Center) {
+                    Icon(AppIcons.Brand, contentDescription = null,
+                        modifier = Modifier.size(30.dp),
+                        tint = MaterialTheme.colorScheme.primary)
+                }
+                PageHeading("对话攻略", "读懂对话，多一种回应的可能。")
+            }
         }
         item {
             SectionCard {
-                StatusBadge(if (!enabled) "助手已关闭" else if (verdict.ready) "基础配置已就绪" else "待完成配置",
-                    highlighted = enabled && verdict.ready)
-                Spacer(Modifier.height(16.dp))
-                Text(if (!enabled) "需要时，随时开启" else if (verdict.ready) "下一句，由你决定" else "开始前，再准备一下",
-                    style = MiuixTheme.textStyles.title2, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
+                Box(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(end = 84.dp)) {
+                        StatusBadge(if (!enabled) "助手已关闭" else if (verdict.ready) "基础配置已就绪" else "待完成配置",
+                            highlighted = enabled && verdict.ready)
+                        Spacer(Modifier.height(16.dp))
+                        Text(if (!enabled) "需要时，随时开启" else if (verdict.ready) "下一句，由你决定" else "开始前，再准备一下",
+                            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface)
+                    }
+                    HomeStatusArt(Modifier.align(Alignment.TopEnd))
+                }
+                Spacer(Modifier.height(10.dp))
                 SupportingText(if (!enabled) "开启后，在聊天中查看判断与回复建议。"
                     else if (verdict.ready) "打开聊天窗口，在悬浮窗中查看分析和回复选项。"
                     else "还需配置：${verdict.missing.joinToString("、")}")
-                Spacer(Modifier.height(12.dp))
-                RoundedSwitchPreference(title = "启用助手", summary = "采集、分析与悬浮窗的总开关",
-                    checked = enabled, onCheckedChange = { enabled = it; prefs.enabled = it })
                 if (!verdict.ready) {
-                    Spacer(Modifier.height(8.dp))
-                    PrimaryAction("去完成配置", onOpenSettings)
+                    Spacer(Modifier.height(16.dp))
+                    PrimaryAction("去完成配置", icon = AppIcons.Setup, onClick = onOpenSettings)
                 }
             }
         }
-        item { SectionHeading("准备情况") }
+        item {
+            GlassCard(padding = PaddingValues(6.dp)) {
+                RoundedSwitchPreference(title = "启用助手", summary = "采集、分析与悬浮窗的总开关",
+                    checked = enabled, icon = AppIcons.Assistant,
+                    onCheckedChange = { enabled = it; prefs.enabled = it })
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { SectionHeading("准备情况") }
+                Row(Modifier.clip(RoundedCornerShape(12.dp))
+                    .clickable(role = Role.Button, onClick = onOpenSettings)
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("查看详情", color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodyMedium)
+                    Icon(AppIcons.ChevronForward, contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
         item {
             SectionCard {
                 SetupStatusRow("聊天采集", when {
                     xposed -> "最近 10 分钟读取到微信正文"
                     a11y -> "无障碍权限已开启，正文可读性以聊天页为准"
                     else -> "开启无障碍，或配置 Xposed 增强模式"
-                }, if (a11y || xposed) "已准备" else "待配置", a11y || xposed)
+                }, if (a11y || xposed) "已准备" else "待配置", a11y || xposed,
+                    icon = AppIcons.Messages, tint = captureTint, divider = true)
                 SetupStatusRow("悬浮窗", "在聊天上方展示判断与回复选项",
-                    if (overlay) "已授权" else "待授权", overlay)
+                    if (overlay) "已授权" else "待授权", overlay,
+                    icon = AppIcons.FloatingWindow, tint = overlayTint, divider = true)
                 SetupStatusRow("判断模型", "密钥配置后，可在设置中测试连通性",
-                    if (prefs.hasKey()) "已配置" else "待配置", prefs.hasKey())
+                    if (prefs.hasKey()) "已配置" else "待配置", prefs.hasKey(),
+                    icon = AppIcons.Model, tint = modelTint)
                 if (verdict.recommendations.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     SupportingText("后台运行建议：${verdict.recommendations.joinToString("、")}")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HomeStatusArt(modifier: Modifier = Modifier) {
+    val dark = LocalAppDarkTheme.current
+    val shape = RoundedCornerShape(15.dp)
+    val tint = if (dark) Color(0xFFA9C8FF) else Color(0xFF3972BE)
+    Box(modifier.size(76.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(width = 54.dp, height = 66.dp)
+            .graphicsLayer { rotationZ = 12f }.clip(shape)
+            .background(Brush.linearGradient(if (dark)
+                listOf(Color(0xFF91B3EC), Color(0xFF496DAA))
+            else listOf(Color(0xFFD8E7FF), Color(0xFF92B7EB))))
+            .border(0.75.dp, Color.White.copy(alpha = 0.55f), shape),
+            contentAlignment = Alignment.Center) {
+            Icon(AppIcons.Document, contentDescription = null,
+                modifier = Modifier.size(35.dp),
+                tint = if (dark) Color(0xFF1D3B69) else tint)
+        }
+        Box(Modifier.align(Alignment.BottomEnd).size(27.dp).clip(CircleShape)
+            .background(if (dark) Color(0xFFB1CCF4) else Color(0xFFE1EDFF))
+            .border(0.75.dp, Color.White.copy(alpha = 0.65f), CircleShape),
+            contentAlignment = Alignment.Center) {
+            Icon(AppIcons.SettingsSelected, contentDescription = null,
+                modifier = Modifier.size(18.dp), tint = Color(0xFF315C94))
         }
     }
 }

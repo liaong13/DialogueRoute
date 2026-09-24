@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -19,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,8 +28,9 @@ import androidx.compose.ui.unit.dp
 import io.github.liaong13.dialogueroute.core.kb.Contact
 import io.github.liaong13.dialogueroute.core.kb.KbStore
 import io.github.liaong13.dialogueroute.core.kb.Note
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 
 @Composable
 internal fun KnowledgeScreen() {
@@ -75,7 +78,11 @@ internal fun KnowledgeScreen() {
 
     val notes = remember(revision) { store.notes().sortedByDescending { it.updatedAt } }
     val contacts = remember(revision) { store.contacts().sortedByDescending { it.updatedAt } }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp),
+    val dark = LocalAppDarkTheme.current
+    val noteTint = if (dark) Color(0xFFAFCBFF) else Color(0xFF3972BE)
+    val contactTint = if (dark) Color(0xFF88DED9) else Color(0xFF23827D)
+    LazyColumn(modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 112.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { PageHeading("知识库", "记下重要的小事，让回应更贴近你。") }
         item {
@@ -86,33 +93,44 @@ internal fun KnowledgeScreen() {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
-                        PrimaryAction("新建笔记") { openNote(null) }
+                        PrimaryAction("新建笔记", icon = AppIcons.Edit) { openNote(null) }
                     }
                     androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
-                        SecondaryAction("从文本导入") { body = ""; editor = "import" }
+                        SecondaryAction("从文本导入", icon = AppIcons.Import) {
+                            body = ""; editor = "import"
+                        }
                     }
                 }
             }
             if (notes.isEmpty()) item {
-                EmptyState("从一件小事开始", "记录习惯、忌口或约定。启用的笔记会按上下文参与分析，常驻笔记则每次都会带上。")
+                EmptyState("从一件小事开始",
+                    "记录习惯、忌口或约定。启用的笔记会按上下文参与分析，常驻笔记则每次都会带上。",
+                    icon = AppIcons.KnowledgeSelected, actionLabel = "写下第一条笔记") { openNote(null) }
             }
             items(notes, key = { "note:${it.id}" }) { note ->
                 GlassCard(modifier = Modifier.animateItem(), padding = PaddingValues(20.dp),
                     onClick = { openNote(note) }) {
                     Row(verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        AccentIconTile(AppIcons.Notes, noteTint)
                         Text(note.title.ifBlank { "未命名笔记" }, modifier = Modifier.weight(1f),
-                            style = MiuixTheme.textStyles.title4, fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 2, overflow = TextOverflow.Ellipsis)
                         if (note.alwaysOn) StatusBadge("常驻", highlighted = note.enabled)
+                        Icon(AppIcons.ChevronForward, contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text(note.content.replace('\n', ' '), maxLines = 3, overflow = TextOverflow.Ellipsis,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    Text(note.content.replace('\n', ' '), modifier = Modifier.padding(start = 56.dp),
+                        maxLines = 3, overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (note.tags.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
-                        Text(note.tags.joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            color = MiuixTheme.colorScheme.primary)
+                        Text(note.tags.joinToString(" · "), modifier = Modifier.padding(start = 56.dp),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.primary)
                     }
                     RoundedSwitchPreference(title = "参与分析", summary = "点击卡片编辑笔记", checked = note.enabled,
                         onCheckedChange = {
@@ -121,29 +139,55 @@ internal fun KnowledgeScreen() {
                 }
             }
         } else {
-            item { PrimaryAction("新建联系人") { openContact(null) } }
+            item { PrimaryAction("新建联系人", icon = AppIcons.Add) { openContact(null) } }
             if (contacts.isEmpty()) item {
-                EmptyState("让每段对话都有背景", "添加联系人，记录你们的关系与相处细节。也可在聊天中长按悬浮球保存当前会话。")
+                EmptyState("让每段对话都有背景",
+                    "添加联系人，记录你们的关系与相处细节。也可在聊天中长按悬浮球保存当前会话。",
+                    icon = AppIcons.ContactsBook, actionLabel = "添加第一位联系人") {
+                    openContact(null)
+                }
             }
             items(contacts, key = { "contact:${it.id}" }) { contact ->
                 GlassCard(modifier = Modifier.animateItem(), padding = PaddingValues(20.dp),
                     onClick = { openContact(contact) }) {
-                    Text(contact.name, style = MiuixTheme.textStyles.title4,
-                        fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        AccentIconTile(AppIcons.ContactsCircle, contactTint)
+                        Text(contact.name, modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold, maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface)
+                        Icon(AppIcons.ChevronForward, contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     Spacer(Modifier.height(8.dp))
-                    SupportingText(contact.relationship.ifBlank { "尚未填写关系" })
+                    Text(contact.relationship.ifBlank { "尚未填写关系" },
+                        modifier = Modifier.padding(start = 56.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (contact.notes.isNotBlank()) {
                         Spacer(Modifier.height(8.dp))
-                        Text(contact.notes, maxLines = 3, overflow = TextOverflow.Ellipsis,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        Text(contact.notes, modifier = Modifier.padding(start = 56.dp),
+                            maxLines = 3, overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     val count = remember(revision, contact.id) { store.logSize(contact.id) }
                     Spacer(Modifier.height(12.dp))
-                    SupportingText("$count 条历史 · 点击编辑资料")
+                    Text("$count 条历史 · 点击编辑资料", modifier = Modifier.padding(start = 56.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
-        item { SupportingText("资料保存在本机；选中的内容会随分析发送至你配置的模型服务。") }
+        item {
+            Row(verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(AppIcons.Info, contentDescription = null, modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("资料保存在本机；选中的内容会随分析发送至你配置的模型服务。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 
     AppDialog(show = editor.isNotEmpty(),
@@ -188,7 +232,8 @@ internal fun KnowledgeScreen() {
                     }
                 }
                 "import" -> {
-                    Text("按空行分段，每段第一行是标题，其余是正文。")
+                    Text("按空行分段，每段第一行是标题，其余是正文。",
+                        color = MaterialTheme.colorScheme.onSurface)
                     UiField("导入文本", body, { body = it }, singleLine = false)
                     PrimaryAction("导入") {
                         var count = 0

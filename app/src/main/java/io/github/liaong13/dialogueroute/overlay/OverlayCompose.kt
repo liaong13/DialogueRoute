@@ -1,14 +1,15 @@
 package io.github.liaong13.dialogueroute.overlay
 
 import android.view.MotionEvent
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,18 +23,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -44,44 +47,64 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.liaong13.dialogueroute.R
+import io.github.liaong13.dialogueroute.AppIcons
 import io.github.liaong13.dialogueroute.core.Analysis
 import io.github.liaong13.dialogueroute.core.ChatSnapshot
 import io.github.liaong13.dialogueroute.core.RankedReply
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun OverlayBubble(
     dangerLevel: Double?,
+    blurredBackground: Boolean,
     onTouch: (MotionEvent) -> Boolean,
     onOpen: () -> Unit,
     onMenu: () -> Unit
 ) {
+    var pressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(if (pressed) 0.88f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 550f), label = "overlayBubblePress")
+    val colors = MaterialTheme.colorScheme
     Box(
         Modifier.size(48.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .semantics {
                 role = Role.Button
                 contentDescription = "对话攻略悬浮球"
                 onClick("展开分析") { onOpen(); true }
                 onLongClick("打开菜单") { onMenu(); true }
             }
-            .pointerInteropFilter(onTouchEvent = onTouch),
+            .pointerInteropFilter { event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> pressed = true
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> pressed = false
+                }
+                onTouch(event)
+            },
         contentAlignment = Alignment.Center
     ) {
         Box(
-            Modifier.size(44.dp).background(MiuixTheme.colorScheme.primary, CircleShape),
+            Modifier.size(44.dp).shadow(5.dp, CircleShape).clip(CircleShape)
+                .background(colors.surface.copy(alpha = if (blurredBackground) 0.48f else 0.82f))
+                .border(0.8.dp, colors.onSurface.copy(alpha = 0.28f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            RouteIcon(28.dp, MiuixTheme.colorScheme.onPrimary)
+            BrandIcon(28.dp, colors.primary)
         }
         dangerLevel?.let { score ->
             Box(
                 Modifier.size(10.dp).align(Alignment.TopEnd)
                     .background(dangerColor(score.roundToInt()), CircleShape)
-                    .border(2.dp, MiuixTheme.colorScheme.surface, CircleShape)
+                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
             )
         }
     }
@@ -119,14 +142,21 @@ internal fun OverlayPanel(
     onHide: () -> Unit,
     onDismissPreview: () -> Unit
 ) {
-    val colors = MiuixTheme.colorScheme
+    val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(16.dp)
+    var entered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { entered = true }
+    val entryScale by animateFloatAsState(if (entered) 1f else 0.94f,
+        animationSpec = spring(dampingRatio = 0.86f, stiffness = 420f), label = "overlayPanelOpen")
+    val entryAlpha by animateFloatAsState(if (entered) 1f else 0f,
+        animationSpec = tween(190), label = "overlayPanelFade")
     Column(
         Modifier.width(panelWidth)
-            .shadow(10.dp, shape)
+            .graphicsLayer { scaleX = entryScale; scaleY = entryScale; alpha = entryAlpha }
+            .shadow(8.dp, shape)
             .clip(shape)
             .background(colors.surface.copy(alpha = opacity))
-            .border(0.8.dp, colors.primary.copy(alpha = 0.22f), shape)
+            .border(0.8.dp, colors.onSurface.copy(alpha = 0.22f), shape)
             .onSizeChanged { onSizeChanged(it.width, it.height) }
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -143,7 +173,7 @@ internal fun OverlayPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                RouteIcon(20.dp, colors.primary)
+                BrandIcon(20.dp, colors.primary)
                 Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     Text(
                         if (menuVisible) "快捷操作" else "对话攻略",
@@ -153,7 +183,7 @@ internal fun OverlayPanel(
                     )
                     Text(
                         "按住移动",
-                        color = colors.onSurfaceVariantSummary.copy(alpha = 0.7f),
+                        color = colors.onSurfaceVariant.copy(alpha = 0.7f),
                         fontSize = 9.sp
                     )
                 }
@@ -224,7 +254,7 @@ internal fun OverlayPanel(
                         Spacer(Modifier.weight(1f))
                         Text(
                             if (replies != null) "${replies.size} 条候选" else "生成中",
-                            color = colors.onSurfaceVariantSummary,
+                            color = colors.onSurfaceVariant,
                             fontSize = 10.sp
                         )
                     }
@@ -255,7 +285,7 @@ internal fun OverlayPanel(
                 if (analysis != null || replies != null) {
                     Text(
                         "填入后由您手动确认发送",
-                        color = colors.onSurfaceVariantSummary.copy(alpha = 0.7f),
+                        color = colors.onSurfaceVariant.copy(alpha = 0.7f),
                         fontSize = 9.5.sp
                     )
                 }
@@ -267,13 +297,13 @@ internal fun OverlayPanel(
 /** 研判卡片组件 */
 @Composable
 private fun JudgmentCard(analysis: Analysis) {
-    val colors = MiuixTheme.colorScheme
+    val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(12.dp)
     Column(
         Modifier.fillMaxWidth()
             .clip(shape)
-            .background(colors.primaryContainer.copy(alpha = 0.28f))
-            .border(0.6.dp, colors.primary.copy(alpha = 0.20f), shape)
+            .background(colors.surfaceVariant.copy(alpha = 0.62f))
+            .border(0.75.dp, colors.onSurface.copy(alpha = 0.18f), shape)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
@@ -324,7 +354,7 @@ private fun JudgmentCard(analysis: Analysis) {
         if (bits.isNotEmpty()) {
             Text(
                 bits.joinToString(" · "),
-                color = colors.onSurfaceVariantSummary,
+                color = colors.onSurfaceVariant,
                 fontSize = 11.sp
             )
         }
@@ -353,7 +383,7 @@ private fun ReplyCard(
     onFill: (String) -> Unit,
     canFill: Boolean
 ) {
-    val colors = MiuixTheme.colorScheme
+    val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(12.dp)
     val isTopRank = rank == 1
 
@@ -361,12 +391,12 @@ private fun ReplyCard(
         Modifier.fillMaxWidth()
             .clip(shape)
             .background(
-                if (isTopRank) colors.primary.copy(alpha = 0.12f)
-                else colors.surfaceVariant.copy(alpha = (opacity + 0.08f).coerceAtMost(1f))
+                if (isTopRank) colors.primaryContainer.copy(alpha = 0.42f)
+                else colors.surfaceVariant.copy(alpha = (opacity * 0.68f).coerceIn(0.38f, 0.68f))
             )
             .border(
-                if (isTopRank) 1.dp else 0.5.dp,
-                if (isTopRank) colors.primary.copy(alpha = 0.38f) else colors.primary.copy(alpha = 0.12f),
+                if (isTopRank) 0.9.dp else 0.6.dp,
+                colors.onSurface.copy(alpha = if (isTopRank) 0.26f else 0.16f),
                 shape
             )
             .padding(horizontal = 10.dp, vertical = 7.dp),
@@ -430,25 +460,20 @@ private fun ReplyChipButton(
     primary: Boolean,
     enabled: Boolean
 ) {
-    val colors = MiuixTheme.colorScheme
-    val shape = RoundedCornerShape(12.dp)
-    Box(
-        Modifier.height(26.dp)
-            .clip(shape)
-            .background(
-                if (primary && enabled) colors.primary
-                else colors.onSurface.copy(alpha = 0.06f)
-            )
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 10.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            label,
-            color = if (primary && enabled) colors.onPrimary else colors.onSurface.copy(alpha = if (enabled) 0.85f else 0.4f),
-            fontSize = 11.sp,
-            fontWeight = if (primary) FontWeight.Bold else FontWeight.Medium
-        )
+    val colors = MaterialTheme.colorScheme
+    val modifier = Modifier.heightIn(min = 32.dp)
+    val padding = ButtonDefaults.ContentPadding
+    if (primary) {
+        Button(onClick = onClick, enabled = enabled, modifier = modifier,
+            contentPadding = padding,
+            colors = ButtonDefaults.buttonColors(containerColor = colors.primary)) {
+            Text(label, fontSize = 11.sp)
+        }
+    } else {
+        OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier,
+            contentPadding = padding) {
+            Text(label, fontSize = 11.sp)
+        }
     }
 }
 
@@ -460,51 +485,33 @@ private fun OverlayAction(
     enabled: Boolean = true,
     primary: Boolean = false
 ) {
-    val colors = MiuixTheme.colorScheme
-    val shape = RoundedCornerShape(10.dp)
-    Box(
-        modifier.height(34.dp)
-            .clip(shape)
-            .background(
-                if (primary && enabled) colors.primary
-                else colors.primary.copy(alpha = 0.08f)
-            )
-            .clickable(enabled = enabled, role = Role.Button, onClick = action),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            label,
-            color = if (primary && enabled) colors.onPrimary else colors.primary.copy(alpha = if (enabled) 1f else 0.5f),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
-        )
+    val colors = MaterialTheme.colorScheme
+    val actionModifier = modifier.heightIn(min = 40.dp)
+    if (primary) {
+        Button(onClick = action, enabled = enabled, modifier = actionModifier,
+            colors = ButtonDefaults.buttonColors(containerColor = colors.primary)) {
+            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+    } else {
+        OutlinedButton(onClick = action, enabled = enabled, modifier = actionModifier) {
+            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
 @Composable
 private fun OverlayMenuItem(symbol: String, label: String, onClick: () -> Unit) {
-    val colors = MiuixTheme.colorScheme
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 40.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Box(
-            Modifier.size(26.dp).clip(RoundedCornerShape(6.dp))
-                .background(colors.primary.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                symbol,
-                color = colors.primary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp
-            )
+    val colors = MaterialTheme.colorScheme
+    TextButton(onClick = onClick,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
+        contentPadding = PaddingValues(horizontal = 6.dp)) {
+        Box(Modifier.size(26.dp).clip(RoundedCornerShape(6.dp))
+            .background(colors.primary.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+            Text(symbol, color = colors.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
         }
-        Text(label, color = colors.onSurface, fontSize = 12.sp)
+        Spacer(Modifier.width(10.dp))
+        Text(label, color = colors.onSurface, fontSize = 12.sp,
+            modifier = Modifier.weight(1f))
     }
 }
 
@@ -512,64 +519,35 @@ private fun OverlayMenuItem(symbol: String, label: String, onClick: () -> Unit) 
 private fun OverlayHint(text: String) {
     Text(
         text,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontSize = 10.5.sp
     )
 }
 
 @Composable
-private fun RouteIcon(size: Dp, color: Color) {
-    Image(
-        painterResource(R.drawable.ic_overlay_route),
-        contentDescription = null,
-        modifier = Modifier.size(size),
-        colorFilter = ColorFilter.tint(color)
-    )
+private fun BrandIcon(size: Dp, color: Color) {
+    Icon(AppIcons.Brand, contentDescription = null, modifier = Modifier.size(size), tint = color)
 }
 
 private enum class HeaderSymbol { MENU, BACK, MINIMIZE }
 
 @Composable
 private fun HeaderAction(label: String, symbol: HeaderSymbol, action: () -> Unit) {
-    Box(
-        Modifier.size(36.dp).clip(CircleShape)
-            .semantics { contentDescription = label }
-            .clickable(role = Role.Button, onClick = action),
-        contentAlignment = Alignment.Center
-    ) {
-        val color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-        Canvas(Modifier.size(16.dp)) {
-            val stroke = 2.dp.toPx()
-            when (symbol) {
-                HeaderSymbol.MENU -> for (fraction in listOf(0.24f, 0.5f, 0.76f)) {
-                    drawCircle(
-                        color, radius = 1.2.dp.toPx(),
-                        center = Offset(size.width * fraction, size.height * 0.5f)
-                    )
-                }
-                HeaderSymbol.BACK -> {
-                    drawLine(
-                        color, Offset(size.width * 0.60f, size.height * 0.24f),
-                        Offset(size.width * 0.34f, size.height * 0.5f), stroke, cap = StrokeCap.Round
-                    )
-                    drawLine(
-                        color, Offset(size.width * 0.34f, size.height * 0.5f),
-                        Offset(size.width * 0.60f, size.height * 0.76f), stroke, cap = StrokeCap.Round
-                    )
-                }
-                HeaderSymbol.MINIMIZE -> drawLine(
-                    color,
-                    Offset(size.width * 0.22f, size.height * 0.5f),
-                    Offset(size.width * 0.78f, size.height * 0.5f), stroke, cap = StrokeCap.Round
-                )
-            }
+    IconButton(onClick = action, modifier = Modifier.size(36.dp)) {
+        val icon = when (symbol) {
+            HeaderSymbol.MENU -> AppIcons.Menu
+            HeaderSymbol.BACK -> AppIcons.Back
+            HeaderSymbol.MINIMIZE -> AppIcons.Minimize
         }
+        Icon(icon, contentDescription = label,
+            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+            modifier = Modifier.size(18.dp))
     }
 }
 
 @Composable
 private fun dangerColor(level: Int): Color = when {
-    level >= 6 -> MiuixTheme.colorScheme.error
+    level >= 6 -> MaterialTheme.colorScheme.error
     level >= 3 -> Color(0xFFD99B26)
     else -> Color(0xFF38A169)
 }

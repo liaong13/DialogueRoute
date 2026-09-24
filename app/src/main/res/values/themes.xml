@@ -1,21 +1,17 @@
 <resources>
-    <style name="Theme.DialogueRoute" parent="Theme.Material3Expressive.Light.NoActionBar">
-        <item name="colorPrimary">@color/dr_accent</item>
-        <item name="colorOnPrimary">@color/dr_on_accent</item>
-        <item name="colorPrimaryVariant">@color/dr_accent</item>
-        <item name="colorPrimaryContainer">@color/dr_container</item>
-        <item name="colorOnPrimaryContainer">@color/dr_text</item>
-        <item name="colorSecondary">@color/dr_accent</item>
-        <item name="colorOnSecondary">@color/dr_on_accent</item>
-        <item name="colorSecondaryContainer">@color/dr_container</item>
-        <item name="colorOnSecondaryContainer">@color/dr_text</item>
-        <item name="colorSurface">@color/dr_surface</item>
-        <item name="colorOnSurface">@color/dr_text</item>
-        <item name="colorOnSurfaceVariant">@color/dr_subtext</item>
+    <style name="Theme.DialogueRoute" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:colorAccent">@color/dr_accent</item>
         <item name="android:windowBackground">#F4F6FA</item>
         <item name="android:forceDarkAllowed">false</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <style name="Theme.DialogueRoute.OverlayWindow" parent="android:style/Theme.Material.Light.Dialog.NoActionBar">
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
     </style>
 </resources>

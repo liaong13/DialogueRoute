@@ -1,5 +1,6 @@
 package io.github.liaong13.dialogueroute.overlay
 
+import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ComponentCallbacks
@@ -8,7 +9,9 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -17,6 +20,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.runtime.getValue
@@ -37,15 +41,15 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.liaong13.dialogueroute.MiuixActivity
+import io.github.liaong13.dialogueroute.DialogueTheme
+import io.github.liaong13.dialogueroute.R
 import io.github.liaong13.dialogueroute.core.Analysis
 import io.github.liaong13.dialogueroute.core.ChatSnapshot
 import io.github.liaong13.dialogueroute.core.Prefs
 import io.github.liaong13.dialogueroute.core.RankedReply
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.darkColorScheme
-import top.yukonga.miuix.kmp.theme.lightColorScheme
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import java.util.function.Consumer
 
 /** 悬浮窗只展示分析、复制或填入草稿；发送始终由用户完成。 */
 class OverlayController(private val ctx: Context) {
@@ -54,6 +58,9 @@ class OverlayController(private val ctx: Context) {
     private val storage = ctx.getSharedPreferences(Prefs.PREFS_MAIN, Context.MODE_PRIVATE)
     private val main = Handler(Looper.getMainLooper())
     private var composeView: ComposeView? = null
+    private var blurDialog: Dialog? = null
+    private var blurBackground: GradientDrawable? = null
+    private var blurListenerRegistered = false
     private var lifecycleOwner: OverlayLifecycleOwner? = null
     private var lp: WindowManager.LayoutParams? = null
     private var listenersRegistered = false
@@ -62,9 +69,18 @@ class OverlayController(private val ctx: Context) {
 
     private var themeMode by mutableStateOf(prefs.themeMode)
     private var opacity by mutableStateOf(prefs.overlayOpacity / 100f)
+    private var crossWindowBlurEnabled by mutableStateOf(false)
     private var configuration by mutableStateOf(Configuration(ctx.resources.configuration))
     private val appearanceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-        main.post { if (composeView != null) refreshAppearance() }
+        main.post { if (composeView != null) { refreshAppearance(); updateBlurWindow() } }
+    }
+    private val blurListener = Consumer<Boolean> { enabled ->
+        main.post {
+            if (composeView != null) {
+                crossWindowBlurEnabled = enabled
+                updateBlurWindow()
+            }
+        }
     }
     private val configurationListener = object : ComponentCallbacks {
         override fun onConfigurationChanged(newConfig: Configuration) {
@@ -143,6 +159,7 @@ class OverlayController(private val ctx: Context) {
             return
         }
         refreshAppearance()
+        crossWindowBlurEnabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && wm.isCrossWindowBlurEnabled
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -172,22 +189,7 @@ class OverlayController(private val ctx: Context) {
                 Prefs.THEME_SYSTEM -> systemDark
                 else -> false
             }
-            val colors = if (darkTheme) darkColorScheme(
-                primary = Color(0xFFA8C9FA), primaryVariant = Color(0xFFA8C9FA),
-                onPrimary = Color(0xFF102D50), primaryContainer = Color(0xFF233B57),
-                background = Color(0xFF11151C), surface = Color(0xFF11151C),
-                surfaceVariant = Color(0xFF1D242E), surfaceContainer = Color(0xFF1D242E),
-                secondary = Color(0xFF233B57)
-            ) else lightColorScheme(
-                primary = Color(0xFF1769C2), primaryVariant = Color(0xFF1769C2),
-                onPrimary = Color.White,
-                primaryContainer = Color(0xFFE8F0FF), background = Color(0xFFF4F6FA),
-                onBackground = Color(0xFF202B3D), onSurface = Color(0xFF202B3D),
-                onSurfaceVariantSummary = Color(0xFF58667C),
-                surface = Color(0xFFEDF1F7), surfaceVariant = Color.White,
-                surfaceContainer = Color.White, secondary = Color(0xFFE8F0FF)
-            )
-            MiuixTheme(colors = colors) {
+            DialogueTheme(dark = darkTheme) {
                 if (expanded) {
                     OverlayPanel(
                         analysis = lastJudgment, replies = pendingReplies,
@@ -197,7 +199,7 @@ class OverlayController(private val ctx: Context) {
                         preview = preview, menuVisible = menuVisible,
                         panelWidth = panelWidthDp.dp,
                         contentHeight = minOf(236f, configuration.screenHeightDp * 0.30f).dp,
-                        opacity = opacity,
+                        opacity = if (crossWindowBlurEnabled) 0.35f + opacity * 0.25f else opacity,
                         onClose = { updateExpanded(false) },
                         onPanelTouch = ::onPanelTouch,
                         onSizeChanged = { width, height ->
@@ -228,6 +230,7 @@ class OverlayController(private val ctx: Context) {
                 } else {
                     OverlayBubble(
                         dangerLevel = lastJudgment?.dangerLevel?.score,
+                        blurredBackground = crossWindowBlurEnabled,
                         onTouch = ::onBubbleTouch,
                         onOpen = { updateExpanded(true) },
                         onMenu = ::showMenu
@@ -236,7 +239,40 @@ class OverlayController(private val ctx: Context) {
             }
         }
         try {
-            wm.addView(cv, params)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val background = GradientDrawable().apply {
+                    cornerRadius = dp(24).toFloat()
+                }
+                val dialog = Dialog(ctx, R.style.Theme_DialogueRoute_OverlayWindow).apply {
+                    setCancelable(false)
+                    window?.apply {
+                        setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+                        addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+                        clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                        setBackgroundDrawable(background)
+                    }
+                    setContentView(cv)
+                }
+                blurDialog = dialog
+                blurBackground = background
+                try {
+                    dialog.show()
+                    dialog.window?.attributes = params
+                    updateBlurWindow()
+                    wm.addCrossWindowBlurEnabledListener(ctx.mainExecutor, blurListener)
+                    blurListenerRegistered = true
+                } catch (blurError: Exception) {
+                    Log.w("DIALOGUEROUTE", "overlay blur window unavailable: ${blurError.javaClass.simpleName}")
+                    runCatching { dialog.dismiss() }
+                    (cv.parent as? ViewGroup)?.removeView(cv)
+                    blurDialog = null
+                    blurBackground = null
+                    crossWindowBlurEnabled = false
+                    wm.addView(cv, params)
+                }
+            } else {
+                wm.addView(cv, params)
+            }
             owner.handleLifecycleEvent(Lifecycle.Event.ON_START)
             owner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
             storage.registerOnSharedPreferenceChangeListener(appearanceListener)
@@ -339,7 +375,24 @@ class OverlayController(private val ctx: Context) {
 
     private fun updateWindow() {
         val params = lp ?: return
-        composeView?.let { runCatching { wm.updateViewLayout(it, params) } }
+        val dialog = blurDialog
+        if (dialog != null) dialog.window?.attributes = params
+        else composeView?.let { runCatching { wm.updateViewLayout(it, params) } }
+    }
+
+    private fun updateBlurWindow() {
+        val dialog = blurDialog ?: return
+        val enabled = crossWindowBlurEnabled
+        val systemDark = configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val dark = themeMode == Prefs.THEME_DARK || (themeMode == Prefs.THEME_SYSTEM && systemDark)
+        blurBackground?.apply {
+            cornerRadius = dp(if (expanded) 16 else 24).toFloat()
+            setColor(if (dark) android.graphics.Color.argb(if (enabled) 68 else 0, 30, 42, 58)
+                else android.graphics.Color.argb(if (enabled) 68 else 0, 224, 236, 250))
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            dialog.window?.setBackgroundBlurRadius(if (enabled) dp(if (expanded) 36 else 24) else 0)
+        }
     }
 
     private fun updateExpanded(value: Boolean) {
@@ -356,6 +409,7 @@ class OverlayController(private val ctx: Context) {
             menuVisible = false
         }
         expanded = value
+        updateBlurWindow()
         clampPosition()
         updateWindow()
     }
@@ -424,7 +478,8 @@ class OverlayController(private val ctx: Context) {
     }
 
     fun setHiddenForShot(hidden: Boolean) {
-        composeView?.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+        (blurDialog?.window?.decorView ?: composeView)?.visibility =
+            if (hidden) View.INVISIBLE else View.VISIBLE
     }
 
     fun showError(msg: String) {
@@ -463,9 +518,16 @@ class OverlayController(private val ctx: Context) {
             ctx.applicationContext.unregisterComponentCallbacks(configurationListener)
             listenersRegistered = false
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && blurListenerRegistered) {
+            wm.removeCrossWindowBlurEnabledListener(blurListener)
+            blurListenerRegistered = false
+        }
         val cv = composeView
+        val dialog = blurDialog
         val owner = lifecycleOwner
         composeView = null
+        blurDialog = null
+        blurBackground = null
         lifecycleOwner = null
         lp = null
         panelWidthPx = 0
@@ -475,7 +537,8 @@ class OverlayController(private val ctx: Context) {
         hiddenByUser = false
         resetForNewConversation()
         cv?.disposeComposition()
-        if (cv != null) runCatching { wm.removeView(cv) }
+        if (dialog != null) runCatching { dialog.dismiss() }
+        else if (cv != null) runCatching { wm.removeView(cv) }
         owner?.destroy()
     }
 }
