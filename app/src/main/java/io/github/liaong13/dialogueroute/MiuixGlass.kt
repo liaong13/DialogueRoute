@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.asPaddingValues
+
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -59,7 +62,11 @@ internal fun GlassBackdrop(content: @Composable () -> Unit) {
             colors = listOf(Color(0xFF8E9FEF).copy(alpha = if (dark) 0.12f else 0.07f), Color.Transparent),
             center = Offset(size.width, size.height * 0.18f), radius = size.width.coerceAtLeast(1f))
         onDrawBehind { drawRect(base); drawRect(glow) }
-    }) { content() }
+    }) {
+        Box(Modifier.fillMaxSize().padding(androidx.compose.foundation.layout.WindowInsets.Companion.systemBars.asPaddingValues())) {
+            content()
+        }
+    }
 }
 
 @Composable

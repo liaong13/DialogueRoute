@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -69,6 +70,7 @@ class MiuixActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         requestedTab = intent.getIntExtra(EXTRA_TAB, 0).coerceIn(0, 2)
         setContent { DialogueApp(requestedTab) }
     }

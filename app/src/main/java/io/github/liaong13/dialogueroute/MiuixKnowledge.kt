@@ -97,7 +97,7 @@ internal fun KnowledgeScreen() {
                 EmptyState("从一件小事开始", "记录习惯、忌口或约定。启用的笔记会按上下文参与分析，常驻笔记则每次都会带上。")
             }
             items(notes, key = { "note:${it.id}" }) { note ->
-                GlassCard(padding = PaddingValues(20.dp),
+                GlassCard(modifier = Modifier.animateItem(), padding = PaddingValues(20.dp),
                     onClick = { openNote(note) }) {
                     Row(verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -126,7 +126,7 @@ internal fun KnowledgeScreen() {
                 EmptyState("让每段对话都有背景", "添加联系人，记录你们的关系与相处细节。也可在聊天中长按悬浮球保存当前会话。")
             }
             items(contacts, key = { "contact:${it.id}" }) { contact ->
-                GlassCard(padding = PaddingValues(20.dp),
+                GlassCard(modifier = Modifier.animateItem(), padding = PaddingValues(20.dp),
                     onClick = { openContact(contact) }) {
                     Text(contact.name, style = MiuixTheme.textStyles.title4,
                         fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)

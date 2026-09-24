@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -103,7 +104,7 @@ private fun ModelSettingsCard(title: String, summary: String, provider: String, 
             .semantics { stateDescription = if (expanded) "已展开" else "已折叠" }
             .clickable(role = Role.Button, onClickLabel = if (expanded) "收起配置" else "展开配置") {
                 expanded = !expanded
-            }.padding(4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            }.padding(4.dp).animateContentSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(title, modifier = Modifier.weight(1f), style = MiuixTheme.textStyles.title4,
