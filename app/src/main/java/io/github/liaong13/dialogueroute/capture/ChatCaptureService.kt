@@ -12,13 +12,17 @@ import android.view.accessibility.AccessibilityNodeInfo
 import io.github.liaong13.dialogueroute.capture.ocr.MlKitOcr
 import io.github.liaong13.dialogueroute.capture.ocr.OcrLine
 import io.github.liaong13.dialogueroute.capture.ocr.ScreenCapture
+import io.github.liaong13.dialogueroute.capture.ocr.VisionTranscript
 import io.github.liaong13.dialogueroute.core.BubbleRect
 import io.github.liaong13.dialogueroute.core.ChatSnapshot
+import io.github.liaong13.dialogueroute.core.ModelProvider
 import io.github.liaong13.dialogueroute.core.Msg
 import io.github.liaong13.dialogueroute.core.Prefs
 import io.github.liaong13.dialogueroute.core.kb.ContextBuilder
 import io.github.liaong13.dialogueroute.core.kb.KbStore
+import io.github.liaong13.dialogueroute.jev.ApiException
 import io.github.liaong13.dialogueroute.jev.JevClient
+import io.github.liaong13.dialogueroute.jev.VisionClient
 import io.github.liaong13.dialogueroute.overlay.OverlayController
 import io.github.liaong13.dialogueroute.xposed.XposedProbeBridge
 import java.util.concurrent.Executors
@@ -72,8 +76,7 @@ open class ChatCaptureService : AccessibilityService() {
     @Volatile private var currentSnapshot: ChatSnapshot? = null
     private var foregroundPkg: String? = null
 
-    // ---- OCR path (B stage). Everything here runs on the main thread: the
-    // screenshot callback and the ML Kit callback are both posted back to it.
+    // 截屏与 ML Kit 回调返回主线程；视觉图片编码和网络请求在工作线程执行。
     private val screenCapture by lazy {
         ScreenCapture(this,
             hideOverlay = { overlay?.setHiddenForShot(true) },
@@ -81,6 +84,10 @@ open class ChatCaptureService : AccessibilityService() {
     }
     private val ocr = MlKitOcr()
     private var ocrBusy = false
+    @Volatile private var ocrEpoch = 0L
+
+    private data class OcrRequest(val epoch: Long, val engine: String, val pkg: String,
+                                  val title: String?, val manual: Boolean)
 
     /** What the screen looked like the last time we fired an automatic shot.
      *  See [ocrSignature]: this is the brake on the OCR path. */
@@ -144,6 +151,8 @@ open class ChatCaptureService : AccessibilityService() {
         if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val fg = rootInActiveWindow?.packageName?.toString()
             if (fg != null && fg !in adapters) {
+                // 截屏前隐藏悬浮窗也可能触发窗口事件；前台应用未变时保留本次手动识别。
+                if (ocrBusy && fg == foregroundPkg) return
                 clearConversation()
                 foregroundPkg = fg
                 val drop = fg == packageName ||
@@ -200,6 +209,7 @@ open class ChatCaptureService : AccessibilityService() {
                 // second forever. The picture can only differ if the bubbles moved
                 // or the conversation changed, and that is exactly what the
                 // signature measures.
+                if (ocrBusy) return
                 val sig = ocrSignature(pkg ?: "", snapshot.title, snapshot.bubbleRects)
                 if (sig == lastOcrSignature && overlay?.isShowing() == true) return
                 lastOcrSignature = sig
@@ -322,6 +332,7 @@ open class ChatCaptureService : AccessibilityService() {
     }
 
     private fun clearConversation() {
+        ocrEpoch++
         main.removeCallbacks(debounce)
         pendingSnapshot = null
         currentSnapshot = null
@@ -343,6 +354,7 @@ open class ChatCaptureService : AccessibilityService() {
     private fun ocrCaptureManual() {
         val root = rootInActiveWindow
         val pkg = root?.packageName?.toString() ?: foregroundPkg ?: activePkg ?: ""
+        foregroundPkg = pkg
         // Top bar text, if this app has one we can read; else the first OCR line.
         val title = root?.let {
             findTitleInActionBar(it, Int.MAX_VALUE, resources.displayMetrics.widthPixels, resources, 0.15, 0.85)
@@ -374,11 +386,27 @@ open class ChatCaptureService : AccessibilityService() {
      */
     private fun ocrCapture(treeTitle: String?, rects: List<BubbleRect>, pkg: String, manual: Boolean) {
         if (ocrBusy) return
+        val engine = prefs.ocrEngine
+        if (engine == Prefs.OCR_VISION) {
+            val visionSelected = ModelProvider.decode(prefs.modelProviders).any {
+                it.id == prefs.visionProviderId && it.canVision && it.key.isNotBlank()
+            }
+            if (!visionSelected || prefs.effectiveVisionKey().isBlank() ||
+                prefs.visionModel.isBlank()) {
+                overlay?.showError("请先在设置中选择视觉供应商、填写密钥和模型")
+                return
+            }
+        }
+        val request = OcrRequest(ocrEpoch, engine, pkg, treeTitle, manual)
         ocrBusy = true
         screenCapture.capture { res ->
             when (res) {
                 is ScreenCapture.Result.Failed -> {
                     ocrBusy = false
+                    if (!isOcrCurrent(request)) {
+                        discardStaleOcr(request)
+                        return@capture
+                    }
                     Log.i(TAG, "ocr: screenshot failed code=${res.code}")
                     // Nothing was read, so the signature must not claim this screen
                     // is done — the next event may retry, still held back by
@@ -390,24 +418,131 @@ open class ChatCaptureService : AccessibilityService() {
                     if (manual || !transient) overlay?.showError(res.humanMessage)
                 }
                 is ScreenCapture.Result.Ok -> {
-                    ocr.scaleX = res.scaleX; ocr.scaleY = res.scaleY
-                    ocr.originX = res.originX; ocr.originY = res.originY
-                    if (rects.isNotEmpty() && !manual) {
+                    if (!isOcrCurrent(request)) {
+                        res.bitmap.recycle()
+                        discardStaleOcr(request)
+                        return@capture
+                    }
+                    val visibleRects = if (rects.isNotEmpty() && !manual) {
                         // Re-measure inside the callback. The rects handed in were
                         // read before the 120ms overlay-hide wait and the shot
                         // itself; one scroll tick in between and we would crop the
                         // rows next to the ones in the picture. Fall back to the
                         // old rects only if the tree gives us nothing now.
                         val fresh = rootInActiveWindow?.let { collectFeishuBubbleRects(it, resources) }
-                        ocrByRects(res.bitmap, if (fresh.isNullOrEmpty()) rects else fresh, treeTitle, pkg)
-                    } else ocrWholeScreen(res.bitmap, treeTitle, pkg, manual)
+                        if (fresh.isNullOrEmpty()) rects else fresh
+                    } else emptyList()
+                    if (engine == Prefs.OCR_VISION) {
+                        ocrWithVision(res, visibleRects, request)
+                    } else {
+                        ocr.scaleX = res.scaleX; ocr.scaleY = res.scaleY
+                        ocr.originX = res.originX; ocr.originY = res.originY
+                        if (visibleRects.isNotEmpty())
+                            ocrByRects(res.bitmap, visibleRects, request)
+                        else ocrWholeScreen(res.bitmap, request)
+                    }
                 }
             }
         }
     }
 
+    private fun isOcrCurrent(request: OcrRequest): Boolean {
+        if (request.epoch != ocrEpoch || !prefs.enabled || prefs.ocrEngine != request.engine ||
+            overlay == null) return false
+        val root = rootInActiveWindow ?: return false
+        if (root.packageName?.toString() != request.pkg) return false
+        if (!request.manual) {
+            if (conversationKey != (request.pkg to request.title)) return false
+            val current = adapters[request.pkg]?.extract(root, resources) ?: return false
+            if (stabilizeTitle(request.pkg, current).title != request.title) return false
+            if (current.messages.isNotEmpty() ||
+                ocrSignature(request.pkg, request.title, current.bubbleRects) != lastOcrSignature)
+                return false
+        } else if (!request.title.isNullOrBlank()) {
+            val currentTitle = findTitleInActionBar(root, Int.MAX_VALUE,
+                resources.displayMetrics.widthPixels, resources, 0.15, 0.85)
+            if (currentTitle != null && currentTitle != request.title) return false
+        }
+        return true
+    }
+
+    private fun discardStaleOcr(request: OcrRequest) {
+        ocrBusy = false
+        if (request.epoch == ocrEpoch && !request.manual) lastOcrSignature = ""
+        if (overlay != null && prefs.enabled) main.post { if (!ocrBusy) maybeCapture() }
+    }
+
+    /** 飞书即使提供多个气泡矩形，每张截图也只发一次视觉请求。 */
+    private fun ocrWithVision(res: ScreenCapture.Result.Ok, rects: List<BubbleRect>,
+                              request: OcrRequest) {
+        val bmp = res.bitmap
+        val crop = visionCrop(res, rects)
+        val client = VisionClient(prefs)
+        try {
+            worker.execute {
+                val result = runCatching {
+                    val jpeg = try {
+                        check(request.epoch == ocrEpoch && prefs.enabled &&
+                            prefs.ocrEngine == Prefs.OCR_VISION && client.matchesCurrentSelection())
+                        val cut = Bitmap.createBitmap(bmp, crop.left, crop.top,
+                            crop.width(), crop.height())
+                        try { VisionClient.encodeJpeg(cut) }
+                        finally { if (cut !== bmp) cut.recycle() }
+                    } finally { bmp.recycle() }
+                    check(jpeg.isNotEmpty()) { "JPEG encoding failed" }
+                    VisionTranscript.parse(client.extractDialog(jpeg))
+                }
+                main.post {
+                    if (!isOcrCurrent(request) || !client.matchesCurrentSelection()) {
+                        discardStaleOcr(request)
+                        return@post
+                    }
+                    result.fold(onSuccess = { transcript ->
+                        if (transcript.messages.isEmpty()) {
+                            ocrBusy = false
+                            // 视觉请求可能已发送，保留自动签名，避免重复事件再次上传同一张图。
+                            overlay?.showError("视觉模型未返回可用的聊天气泡")
+                        } else finishOcrSnapshot(ChatSnapshot(
+                            request.title ?: transcript.title, transcript.messages,
+                            note = VISION_OCR_NOTE), request)
+                    }, onFailure = { error ->
+                        ocrBusy = false
+                        // 请求可能已发送；保持签名，只允许手动重试或画面变化后再补采。
+                        Log.w(TAG, "vision ocr failed: ${error.javaClass.simpleName}")
+                        val status = (error as? ApiException)?.status
+                        overlay?.showError(if (status != null)
+                            "视觉 OCR 请求失败（HTTP $status），请检查视觉模型配置"
+                        else "视觉 OCR 失败，请检查视觉模型配置或网络")
+                    })
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            bmp.recycle()
+            ocrBusy = false
+        }
+    }
+
+    /** 优先裁剪到已知气泡范围，否则去掉顶部栏和输入区。 */
+    private fun visionCrop(res: ScreenCapture.Result.Ok, rects: List<BubbleRect>): Rect {
+        val bmp = res.bitmap
+        val fallback = Rect(0, (bmp.height * TOP_CROP).toInt(), bmp.width,
+            (bmp.height * BOTTOM_CROP).toInt())
+        if (rects.isEmpty()) return fallback
+        var top = bmp.height
+        var bottom = 0
+        rects.forEach { bubble ->
+            val r = bubble.rect
+            top = minOf(top, ((r.top - res.originY) * res.scaleY).toInt())
+            bottom = maxOf(bottom, ((r.bottom - res.originY) * res.scaleY).toInt())
+        }
+        val pad = (8 * resources.displayMetrics.density).toInt()
+        val bounds = Rect(0, (top - pad).coerceAtLeast(0), bmp.width,
+            (bottom + pad).coerceAtMost(bmp.height))
+        return if (bounds.height() >= 8) bounds else fallback
+    }
+
     /** One OCR pass per bubble rectangle; each rect becomes exactly one message. */
-    private fun ocrByRects(bmp: Bitmap, rects: List<BubbleRect>, title: String?, pkg: String) {
+    private fun ocrByRects(bmp: Bitmap, rects: List<BubbleRect>, request: OcrRequest) {
         val sx = ocr.scaleX; val sy = ocr.scaleY
         // Screen -> bitmap: drop the window origin first. A window shot does not
         // start at (0,0) in split screen or when it excludes the status bar.
@@ -424,21 +559,21 @@ open class ChatCaptureService : AccessibilityService() {
                 remaining--
                 if (remaining == 0) {
                     runCatching { bmp.recycle() }
-                    finishOcrSnapshot(ChatSnapshot(title, out.filterNotNull()), pkg, manual = false)
+                    finishOcrSnapshot(ChatSnapshot(request.title, out.filterNotNull()), request)
                 }
             }
         }
     }
 
     /** Whole screen minus the top bar and the input area, grouped by line gaps. */
-    private fun ocrWholeScreen(bmp: Bitmap, treeTitle: String?, pkg: String, manual: Boolean) {
+    private fun ocrWholeScreen(bmp: Bitmap, request: OcrRequest) {
         val region = Rect(0, (bmp.height * TOP_CROP).toInt(), bmp.width, (bmp.height * BOTTOM_CROP).toInt())
         ocr.recognize(bmp, region) { lines ->
             runCatching { bmp.recycle() }
             val msgs = groupOcrLines(lines)
-            val title = treeTitle?.takeIf { it.isNotBlank() }
+            val title = request.title?.takeIf { it.isNotBlank() }
                 ?: lines.firstOrNull()?.text?.trim()?.take(24)
-            finishOcrSnapshot(ChatSnapshot(title, msgs, note = OCR_NOTE), pkg, manual)
+            finishOcrSnapshot(ChatSnapshot(title, msgs, note = OCR_NOTE), request)
         }
     }
 
@@ -486,8 +621,14 @@ open class ChatCaptureService : AccessibilityService() {
     }
 
     /** Shared tail of both OCR paths: dedupe, then analyze or park the bubble. */
-    private fun finishOcrSnapshot(snapshot: ChatSnapshot, pkg: String, manual: Boolean) {
+    private fun finishOcrSnapshot(snapshot: ChatSnapshot, request: OcrRequest) {
         ocrBusy = false
+        if (!isOcrCurrent(request)) {
+            discardStaleOcr(request)
+            return
+        }
+        val pkg = request.pkg
+        val manual = request.manual
         // Counts only — OCR'd chat text never goes to logcat.
         Log.i(TAG, "ocr[$pkg] msgs=${snapshot.messages.size} manual=$manual")
         if (snapshot.messages.isEmpty()) {
@@ -622,6 +763,7 @@ open class ChatCaptureService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        ocrEpoch++
         if (activeInstance?.get() === this) activeInstance = null
         // Tear the overlay down and cut its callback so a stale button tap can
         // never call back into this dead instance.
@@ -652,6 +794,7 @@ open class ChatCaptureService : AccessibilityService() {
 
         /** Said on the panel whenever a snapshot came from flat-screen OCR. */
         private const val OCR_NOTE = "OCR 未分边，把全部消息当作对方所说"
+        private const val VISION_OCR_NOTE = "视觉模型根据截图推断发送方，请核对识别内容"
 
         private val PURE_TIME = Regex("""\d{1,2}[:：]\d{2}""")
         private val TAIL_TIME = Regex("""\d{1,2}[:：]\d{2}$""")
