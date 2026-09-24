@@ -203,6 +203,15 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         get() = sp.getInt(K_BUBBLE_X, -1)
         set(v) = sp.edit().putInt(K_BUBBLE_X, v).apply()
 
+    /** Remembered position of the expanded overlay (px); -1 = initial placement. */
+    var panelX: Int
+        get() = sp.getInt(K_PANEL_X, -1)
+        set(v) = sp.edit().putInt(K_PANEL_X, v).apply()
+
+    var panelY: Int
+        get() = sp.getInt(K_PANEL_Y, -1)
+        set(v) = sp.edit().putInt(K_PANEL_Y, v).apply()
+
     /** Auto-analyze on every incoming message; if false, user taps to analyze. */
     var autoAnalyze: Boolean
         get() = sp.getBoolean(K_AUTO, true)
@@ -281,6 +290,8 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         private const val K_OPACITY = "overlay_opacity"
         private const val K_BUBBLE_Y = "bubble_y"
         private const val K_BUBBLE_X = "bubble_x"
+        private const val K_PANEL_X = "overlay_panel_x"
+        private const val K_PANEL_Y = "overlay_panel_y"
         private const val K_AUTO = "auto_analyze"
 
         const val PROVIDER_OPENROUTER = "openrouter"

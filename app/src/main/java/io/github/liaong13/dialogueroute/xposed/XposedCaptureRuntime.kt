@@ -117,7 +117,17 @@ class XposedCaptureRuntime private constructor(private val context: Context) {
             return
         }
         analyzingGeneration = token
-        ui.showLoading()
+        val uiToken = ui.showLoading()
+        if (!ui.isCurrentAnalysis(uiToken)) {
+            analyzingGeneration = -1
+            return
+        }
+        var remaining = 2
+        fun finishBranch() {
+            remaining--
+            if (remaining == 0 && token == generation) analyzingGeneration = -1
+        }
+        fun isCurrent() = token == generation && ui.isCurrentAnalysis(uiToken)
         ui.setNote("来源：微信 Xposed 当前会话文本")
         val client = JevClient(prefs)
         val relationship = prefs.relationship
@@ -126,24 +136,24 @@ class XposedCaptureRuntime private constructor(private val context: Context) {
                 ContextBuilder.build(context, current, WECHAT_PACKAGE, prefs)
             } catch (_: Exception) { null }
             main.post {
-                if (token == generation) ui.setContextInfo(extra?.notes?.size ?: 0,
+                if (isCurrent()) ui.setContextInfo(extra?.notes?.size ?: 0,
                     extra?.history?.size ?: 0)
             }
             worker.execute {
                 val judgment = try { client.judge(current, relationship, extra) }
                 catch (e: Exception) {
                     main.post {
-                        if (token == generation) {
-                            analyzingGeneration = -1
+                        finishBranch()
+                        if (isCurrent()) {
                             ui.showError("判断失败：${e.javaClass.simpleName}")
                         }
                     }
                     return@execute
                 }
                 main.post {
-                    if (token != generation) return@post
+                    finishBranch()
+                    if (!isCurrent()) return@post
                     if (judgment.error != null) {
-                        analyzingGeneration = -1
                         ui.showError(judgment.error)
                     }
                     else ui.showJudgment(judgment)
@@ -157,9 +167,11 @@ class XposedCaptureRuntime private constructor(private val context: Context) {
                     emptyList()
                 }
                 main.post {
-                    if (token != generation) return@post
-                    analyzingGeneration = -1
-                    ui.showReplies(replies, error) { text -> requestFill(token, text) }
+                    finishBranch()
+                    if (!isCurrent()) return@post
+                    ui.showReplies(replies, error) { text ->
+                        if (isCurrent()) requestFill(token, text)
+                    }
                 }
             }
         }

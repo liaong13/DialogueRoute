@@ -7,132 +7,142 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
-import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
+import android.view.ViewConfiguration
 import android.view.WindowManager
-import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
 import android.widget.Toast
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import io.github.liaong13.dialogueroute.MiuixActivity
 import io.github.liaong13.dialogueroute.core.Analysis
 import io.github.liaong13.dialogueroute.core.ChatSnapshot
 import io.github.liaong13.dialogueroute.core.Prefs
 import io.github.liaong13.dialogueroute.core.RankedReply
-import io.github.liaong13.dialogueroute.MiuixActivity
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.darkColorScheme
+import top.yukonga.miuix.kmp.theme.lightColorScheme
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/**
- * Floating overlay for Dialogue Route (对话攻略), using the app's selected theme.
- * A draggable bubble that expands into a translucent panel showing Jev's analysis
- * and ranked candidate replies. All actions are copy / fill — never send.
- */
+/** 悬浮窗只展示分析、复制或填入草稿；发送始终由用户完成。 */
 class OverlayController(private val ctx: Context) {
-
-    init { OverlayViews.configurePalette(ctx) }
-
     private val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val prefs = Prefs(ctx)
     private val storage = ctx.getSharedPreferences(Prefs.PREFS_MAIN, Context.MODE_PRIVATE)
-    private var renderedDark = OverlayViews.isDark
-    private val appearanceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == Prefs.KEY_THEME_MODE || key == null) root?.post { refreshAppearance() }
+    private val main = Handler(Looper.getMainLooper())
+    private var composeView: ComposeView? = null
+    private var lifecycleOwner: OverlayLifecycleOwner? = null
+    private var lp: WindowManager.LayoutParams? = null
+    private var listenersRegistered = false
+    private var hiddenByUser = false
+    private var analysisEpoch = 0L
+
+    private var themeMode by mutableStateOf(prefs.themeMode)
+    private var opacity by mutableStateOf(prefs.overlayOpacity / 100f)
+    private var configuration by mutableStateOf(Configuration(ctx.resources.configuration))
+    private val appearanceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        main.post { if (composeView != null) refreshAppearance() }
     }
     private val configurationListener = object : ComponentCallbacks {
         override fun onConfigurationChanged(newConfig: Configuration) {
-            root?.post { refreshAppearance() }
+            main.post {
+                if (composeView != null) {
+                    configuration = Configuration(newConfig)
+                    clampPosition()
+                    updateWindow()
+                }
+            }
         }
         override fun onLowMemory() = Unit
     }
-    private var root: FrameLayout? = null
-    private var bubble: TextView? = null
-    private var dangerDot: View? = null
-    private var panel: LinearLayout? = null
-    private var contentBox: LinearLayout? = null
-    private var expanded = false
-    private var lp: WindowManager.LayoutParams? = null
+
+    private var expanded by mutableStateOf(false)
+    private var menuVisible by mutableStateOf(false)
+    private var judging by mutableStateOf(false)
+    private var generatingReplies by mutableStateOf(false)
+    private var lastJudgment by mutableStateOf<Analysis?>(null)
+    private var pendingReplies by mutableStateOf<List<RankedReply>?>(null)
+    private var judgmentError by mutableStateOf<String?>(null)
+    private var replyError by mutableStateOf<String?>(null)
+    private var preview by mutableStateOf<ChatSnapshot?>(null)
+    private var ctxNotes by mutableStateOf(0)
+    private var ctxHistory by mutableStateOf(0)
+    private var noteText by mutableStateOf<String?>(null)
+    private var lastFill by mutableStateOf<((String) -> Unit)?>(null)
 
     var onManualAnalyze: (() -> Unit)? = null
-
-    /** Bubble menu → file the open conversation as a knowledge-base contact. */
     var onSaveContact: (() -> Unit)? = null
-
-    /** Bubble menu → one manual screenshot + OCR of whatever app is open. */
     var onOcrCapture: (() -> Unit)? = null
-
-    /** Xposed mode only: let the user compare the in-memory capture with the open chat. */
     var onInspectCapture: (() -> Unit)? = null
 
-    /** How much knowledge context the last analysis actually used. */
-    private var ctxNotes = 0
-    private var ctxHistory = 0
+    private var collapsedX = dp(8)
+    private var collapsedY = dp(150)
+    private var panelX = prefs.panelX
+    private var panelY = prefs.panelY
+    private var panelWidthPx = 0
+    private var panelHeightPx = 0
+    private var startX = 0
+    private var startY = 0
+    private var touchX = 0f
+    private var touchY = 0f
+    private var moved = false
+    private var longFired = false
+    private val longPress = Runnable {
+        if (!moved && composeView != null && !expanded) {
+            longFired = true
+            showMenu()
+        }
+    }
 
-    /** A caveat about how the current snapshot was captured (OCR mode). */
-    private var noteText: String? = null
+    fun isShowing(): Boolean = composeView != null
+    fun isCurrentAnalysis(token: Long): Boolean = token == analysisEpoch && !hiddenByUser && prefs.enabled
 
-    /** Whether the overlay window is currently on screen. */
-    fun isShowing(): Boolean = root != null
-
-    private var lastJudgment: Analysis? = null
-    private var lastFill: ((String) -> Unit)? = null
-    private var pendingReplies: List<RankedReply>? = null
-
-    /** Set when [showReplies] was handed a draftAndRank failure. */
-    private var replyError: String? = null
-
-    private fun dp(v: Int) = OverlayViews.dp(ctx, v)
-
-    private fun canOverlay(): Boolean = Settings.canDrawOverlays(ctx)
-
+    private fun dp(value: Int) = (ctx.resources.displayMetrics.density * value).roundToInt()
     private val screenW get() = ctx.resources.displayMetrics.widthPixels
     private val screenH get() = ctx.resources.displayMetrics.heightPixels
-
-    /** 面板透明度保留用户设置，底色随应用主题变化。 */
-    private fun panelBg(): Int {
-        val a = (prefs.overlayOpacity / 100f * 255).roundToInt().coerceIn(160, 255)
-        val base = OverlayViews.COLOR_CARD_BG
-        return Color.argb(a, Color.red(base), Color.green(base), Color.blue(base))
-    }
-
-    private fun card(radius: Int, color: Int, stroke: Boolean = false) = GradientDrawable().apply {
-        cornerRadius = dp(radius).toFloat()
-        setColor(color)
-        if (stroke) setStroke(dp(1), OverlayViews.COLOR_CARD_STROKE)
-    }
-
-    // ---------------------------------------------------------------- window
-
-    private class AppearanceBinding(val update: () -> Unit)
-
-    private fun <T : View> T.bindAppearance(update: T.() -> Unit): T = apply {
-        tag = AppearanceBinding { update() }
-        update()
+    private val panelWidthDp: Int get() {
+        val width = configuration.screenWidthDp
+        val fraction = if (menuVisible) 0.74f else 0.84f
+        return minOf(if (menuVisible) 220 else 252,
+            (width * fraction).roundToInt().coerceAtLeast(1), (width - 16).coerceAtLeast(1))
     }
 
     private fun refreshAppearance() {
-        OverlayViews.configurePalette(ctx)
-        if (renderedDark == OverlayViews.isDark) return
-        renderedDark = OverlayViews.isDark
-        fun refresh(view: View) {
-            (view.tag as? AppearanceBinding)?.update?.invoke()
-            if (view is ViewGroup) for (index in 0 until view.childCount) refresh(view.getChildAt(index))
-        }
-        root?.let(::refresh)
+        themeMode = prefs.themeMode
+        opacity = prefs.overlayOpacity / 100f
+        configuration = Configuration(ctx.resources.configuration)
     }
 
     private fun ensureRoot() {
+        if (composeView != null || hiddenByUser) return
+        if (!Settings.canDrawOverlays(ctx)) {
+            Log.w("DIALOGUEROUTE", "overlay: canDrawOverlays=false")
+            return
+        }
         refreshAppearance()
-        if (root != null) return
-        if (!canOverlay()) { Log.w("DIALOGUEROUTE", "overlay: canDrawOverlays=false"); return }
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -141,238 +151,268 @@ class OverlayController(private val ctx: Context) {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = if (prefs.bubbleX in 0..(screenW - dp(52))) prefs.bubbleX else dp(8)
-            y = if (prefs.bubbleY >= 0) prefs.bubbleY else dp(150)
+            x = prefs.bubbleX.takeIf { it >= 0 } ?: dp(8)
+            y = prefs.bubbleY.takeIf { it >= 0 } ?: dp(150)
         }
         lp = params
-
-        val r = FrameLayout(ctx)
-        val p = buildPanel()
-        val bubbleWrap = buildBubble(params)
-        r.addView(p)
-        r.addView(bubbleWrap)
-        root = r
-        try {
-            wm.addView(r, params)
-            storage.registerOnSharedPreferenceChangeListener(appearanceListener)
-            ctx.applicationContext.registerComponentCallbacks(configurationListener)
-        } catch (e: Exception) {
-            Log.e("DIALOGUEROUTE", "overlay addView failed: ${e.message}"); root = null
-        }
-    }
-
-    private fun buildBubble(params: WindowManager.LayoutParams): View {
-        val wrap = FrameLayout(ctx).apply {
-            layoutParams = FrameLayout.LayoutParams(dp(52), dp(52))
-        }
-        val b = TextView(ctx).apply {
-            text = "攻"
-            gravity = Gravity.CENTER
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
-            layoutParams = FrameLayout.LayoutParams(dp(52), dp(52))
-        }.bindAppearance {
-            setTextColor(if (OverlayViews.isDark) Color.BLACK else Color.WHITE)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(OverlayViews.COLOR_PRIMARY)
-            }
-        }
-        val dot = View(ctx).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.TRANSPARENT) }
-            layoutParams = FrameLayout.LayoutParams(dp(12), dp(12)).apply {
-                gravity = Gravity.TOP or Gravity.END
-            }
-        }
-        wrap.addView(b)
-        wrap.addView(dot)
-        attachBubbleTouch(wrap, params)
-        bubble = b; dangerDot = dot
-        return wrap
-    }
-
-    private fun buildPanel(): LinearLayout {
-        val p = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            elevation = dp(8).toFloat()
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-            layoutParams = FrameLayout.LayoutParams(dp(320), FrameLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(56)
-            }
-        }.bindAppearance { background = card(20, panelBg(), stroke = true) }
-        // Header
-        val header = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        header.addView(TextView(ctx).apply {
-            text = "对话攻略 · ROUTE"
-            textSize = 15f
-            setTypeface(typeface, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }.bindAppearance { setTextColor(OverlayViews.COLOR_INK) })
-        header.addView(iconBtn("⚙") { openSettings() })
-        header.addView(iconBtn("✕") { toggle() })
-        p.addView(header)
-
-        val scroll = ScrollView(ctx).apply {
-            isVerticalScrollBarEnabled = false
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, (screenH * 0.40f).roundToInt()).apply { topMargin = dp(6) }
-        }
-        val content = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        scroll.addView(content)
-        p.addView(scroll)
-        contentBox = content
-        panel = p
-        return p
-    }
-
-    private fun iconBtn(glyph: String, onClick: () -> Unit) = TextView(ctx).apply {
-        text = glyph
-        textSize = 16f
-        setPadding(dp(10), dp(2), dp(6), dp(2))
-        setOnClickListener { onClick() }
-    }.bindAppearance { setTextColor(OverlayViews.COLOR_SUB) }
-
-    // --------------------------------------------------------------- gestures
-
-    private fun attachBubbleTouch(v: View, params: WindowManager.LayoutParams) {
-        var startX = 0; var startY = 0; var touchX = 0f; var touchY = 0f
-        var moved = false; var longFired = false
-        val longPress = Runnable {
-            if (!moved) { longFired = true; showBubbleMenu() }
-        }
-        v.setOnTouchListener { _, e ->
-            when (e.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    startX = params.x; startY = params.y; touchX = e.rawX; touchY = e.rawY
-                    moved = false; longFired = false
-                    v.postDelayed(longPress, 500); true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = (e.rawX - touchX).toInt(); val dy = (e.rawY - touchY).toInt()
-                    if (abs(dx) > dp(6) || abs(dy) > dp(6)) moved = true
-                    params.x = (startX + dx).coerceIn(dp(8), screenW - dp(60))
-                    params.y = (startY + dy).coerceIn(dp(24), screenH - dp(120))
-                    root?.let { runCatching { wm.updateViewLayout(it, params) } }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    v.removeCallbacks(longPress)
-                    if (longFired) { true }
-                    else if (moved) {
-                        prefs.bubbleX = params.x; prefs.bubbleY = params.y; true
-                    } else { toggle(); true }
-                }
-                MotionEvent.ACTION_CANCEL -> { v.removeCallbacks(longPress); true }
+        clampPosition()
+        val owner = OverlayLifecycleOwner()
+        owner.performRestore(null)
+        owner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        val cv = ComposeView(ctx)
+        cv.setViewTreeLifecycleOwner(owner)
+        cv.setViewTreeSavedStateRegistryOwner(owner)
+        cv.setViewTreeViewModelStoreOwner(owner)
+        composeView = cv
+        lifecycleOwner = owner
+        cv.setContent {
+            val systemDark = configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+            val darkTheme = when (themeMode) {
+                Prefs.THEME_DARK -> true
+                Prefs.THEME_SYSTEM -> systemDark
                 else -> false
             }
+            val colors = if (darkTheme) darkColorScheme(
+                primary = Color(0xFFA8C9FA), primaryVariant = Color(0xFFA8C9FA),
+                onPrimary = Color(0xFF102D50), primaryContainer = Color(0xFF233B57),
+                background = Color(0xFF11151C), surface = Color(0xFF11151C),
+                surfaceVariant = Color(0xFF1D242E), surfaceContainer = Color(0xFF1D242E),
+                secondary = Color(0xFF233B57)
+            ) else lightColorScheme(
+                primary = Color(0xFF1769C2), primaryVariant = Color(0xFF1769C2),
+                onPrimary = Color.White,
+                primaryContainer = Color(0xFFE8F0FF), background = Color(0xFFF4F6FA),
+                onBackground = Color(0xFF202B3D), onSurface = Color(0xFF202B3D),
+                onSurfaceVariantSummary = Color(0xFF58667C),
+                surface = Color(0xFFEDF1F7), surfaceVariant = Color.White,
+                surfaceContainer = Color.White, secondary = Color(0xFFE8F0FF)
+            )
+            MiuixTheme(colors = colors) {
+                if (expanded) {
+                    OverlayPanel(
+                        analysis = lastJudgment, replies = pendingReplies,
+                        judging = judging, generatingReplies = generatingReplies,
+                        error = judgmentError, replyError = replyError,
+                        notes = ctxNotes, history = ctxHistory, note = noteText,
+                        preview = preview, menuVisible = menuVisible,
+                        panelWidth = panelWidthDp.dp,
+                        contentHeight = minOf(236f, configuration.screenHeightDp * 0.30f).dp,
+                        opacity = opacity,
+                        onClose = { updateExpanded(false) },
+                        onPanelTouch = ::onPanelTouch,
+                        onSizeChanged = { width, height ->
+                            panelWidthPx = width
+                            panelHeightPx = height
+                            if (expanded) {
+                                clampPosition()
+                                updateWindow()
+                            }
+                        },
+                        onMenu = { menuVisible = !menuVisible },
+                        onSettings = ::openSettings,
+                        onManualAnalyze = { preview = null; onManualAnalyze?.invoke() },
+                        onCopy = ::copy,
+                        onFill = { text ->
+                            lastFill?.let { fill ->
+                                fill(text)
+                                updateExpanded(false)
+                            }
+                        },
+                        canFill = lastFill != null,
+                        onSaveContact = onSaveContact?.let { action -> { menuVisible = false; action() } },
+                        onOcrCapture = onOcrCapture?.let { action -> { menuVisible = false; action() } },
+                        onInspectCapture = onInspectCapture?.let { action -> { menuVisible = false; action() } },
+                        onHide = { hide(); hiddenByUser = true },
+                        onDismissPreview = { preview = null }
+                    )
+                } else {
+                    OverlayBubble(
+                        dangerLevel = lastJudgment?.dangerLevel?.score,
+                        onTouch = ::onBubbleTouch,
+                        onOpen = { updateExpanded(true) },
+                        onMenu = ::showMenu
+                    )
+                }
+            }
+        }
+        try {
+            wm.addView(cv, params)
+            owner.handleLifecycleEvent(Lifecycle.Event.ON_START)
+            owner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+            storage.registerOnSharedPreferenceChangeListener(appearanceListener)
+            ctx.applicationContext.registerComponentCallbacks(configurationListener)
+            listenersRegistered = true
+        } catch (e: Exception) {
+            Log.e("DIALOGUEROUTE", "overlay addView failed: ${e.javaClass.simpleName}")
+            hide()
         }
     }
 
-    private fun showBubbleMenu() {
-        refreshAppearance()
-        val menu = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            elevation = dp(8).toFloat()
-            setPadding(dp(4), dp(4), dp(4), dp(4))
-            layoutParams = FrameLayout.LayoutParams(dp(200), ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(56) }
-        }.bindAppearance { background = card(16, panelBg(), stroke = true) }
-        if (onOcrCapture != null) {
-            menu.addView(menuItem("截屏识别一次") { root?.removeView(menu); onOcrCapture?.invoke() })
+    // 只让悬浮球处理原始触摸，面板按钮和滚动由 Compose 自己分发。
+    private fun onBubbleTouch(event: MotionEvent): Boolean {
+        val params = lp ?: return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                startX = params.x; startY = params.y
+                touchX = event.rawX; touchY = event.rawY
+                moved = false; longFired = false
+                main.removeCallbacks(longPress)
+                main.postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (longFired) return true
+                val dx = (event.rawX - touchX).roundToInt()
+                val dy = (event.rawY - touchY).roundToInt()
+                val slop = ViewConfiguration.get(ctx).scaledTouchSlop
+                if (abs(dx) > slop || abs(dy) > slop) {
+                    moved = true
+                    main.removeCallbacks(longPress)
+                }
+                if (moved) {
+                    params.x = startX + dx; params.y = startY + dy
+                    clampPosition()
+                    updateWindow()
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                main.removeCallbacks(longPress)
+                if (!longFired) {
+                    if (moved) {
+                        prefs.bubbleX = params.x; prefs.bubbleY = params.y
+                    } else updateExpanded(true)
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> main.removeCallbacks(longPress)
         }
-        if (onInspectCapture != null) {
-            menu.addView(menuItem("核对本次采集") { root?.removeView(menu); onInspectCapture?.invoke() })
-        }
-        menu.addView(menuItem("把当前会话存为联系人") { onSaveContact?.invoke(); root?.removeView(menu) })
-        menu.addView(menuItem("打开设置") { openSettings(); root?.removeView(menu) })
-        menu.addView(menuItem("隐藏助手（本次）") { hide() })
-        menu.addView(menuItem("取消") { root?.removeView(menu) })
-        root?.addView(menu)
+        return true
     }
 
-    private fun menuItem(label: String, onClick: () -> Unit) = TextView(ctx).apply {
-        text = label
-        textSize = 14f
-        setPadding(dp(12), dp(10), dp(12), dp(10))
-        setOnClickListener { onClick() }
-    }.bindAppearance { setTextColor(OverlayViews.COLOR_INK) }
+    private fun clampPosition() {
+        val params = lp ?: return
+        if (expanded) {
+            val width = panelWidthPx.takeIf { it > 0 } ?: dp(panelWidthDp)
+            val height = panelHeightPx.takeIf { it > 0 } ?: dp(340)
+            params.x = params.x.coerceIn(dp(8), (screenW - width - dp(8)).coerceAtLeast(dp(8)))
+            params.y = params.y.coerceIn(dp(24), (screenH - height - dp(24)).coerceAtLeast(dp(24)))
+        } else {
+            params.x = params.x.coerceIn(dp(8), (screenW - dp(56)).coerceAtLeast(dp(8)))
+            params.y = params.y.coerceIn(dp(24), (screenH - dp(120)).coerceAtLeast(dp(24)))
+        }
+    }
+
+    private fun onPanelTouch(event: MotionEvent): Boolean {
+        if (!expanded) return false
+        val params = lp ?: return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                startX = params.x; startY = params.y
+                touchX = event.rawX; touchY = event.rawY
+                moved = false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = (event.rawX - touchX).roundToInt()
+                val dy = (event.rawY - touchY).roundToInt()
+                val slop = ViewConfiguration.get(ctx).scaledTouchSlop
+                if (abs(dx) > slop || abs(dy) > slop) moved = true
+                if (moved) {
+                    params.x = startX + dx
+                    params.y = startY + dy
+                    clampPosition()
+                    updateWindow()
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (moved) savePanelPosition()
+            }
+        }
+        return true
+    }
+
+    private fun savePanelPosition() {
+        val params = lp ?: return
+        if (!expanded) return
+        panelX = params.x
+        panelY = params.y
+        prefs.panelX = panelX
+        prefs.panelY = panelY
+    }
+
+    private fun updateWindow() {
+        val params = lp ?: return
+        composeView?.let { runCatching { wm.updateViewLayout(it, params) } }
+    }
+
+    private fun updateExpanded(value: Boolean) {
+        if (composeView == null || value == expanded) return
+        main.removeCallbacks(longPress)
+        val params = lp ?: return
+        if (value) {
+            collapsedX = params.x; collapsedY = params.y
+            params.x = if (panelX >= 0) panelX else collapsedX
+            params.y = if (panelY >= 0) panelY else minOf(collapsedY, (screenH * 0.14f).roundToInt())
+        } else {
+            panelX = params.x; panelY = params.y
+            params.x = collapsedX; params.y = collapsedY
+            menuVisible = false
+        }
+        expanded = value
+        clampPosition()
+        updateWindow()
+    }
+
+    private fun showMenu() {
+        updateExpanded(true)
+        menuVisible = true
+    }
 
     private fun openSettings() {
+        menuVisible = false
+        updateExpanded(false)
         runCatching {
             ctx.startActivity(Intent(ctx, MiuixActivity::class.java)
                 .putExtra(MiuixActivity.EXTRA_TAB, 2)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP))
-        }
-        if (expanded) toggle()
+        }.onFailure { toast("无法打开设置") }
     }
-
-    private var collapsedX = dp(6)
-    private var collapsedY = dp(150)
-
-    private fun toggle() {
-        refreshAppearance()
-        expanded = !expanded
-        val params = lp ?: return
-        if (expanded) {
-            collapsedX = params.x; collapsedY = params.y
-            params.x = dp(6)
-            val maxTop = (screenH * 0.14f).roundToInt()
-            if (params.y > maxTop) params.y = maxTop
-            panel?.visibility = View.VISIBLE
-        } else {
-            panel?.visibility = View.GONE
-            params.x = collapsedX; params.y = collapsedY
-        }
-        root?.let { runCatching { wm.updateViewLayout(it, params) } }
-    }
-
-    // ------------------------------------------------------------ public API
 
     fun showIdle(title: String?) {
-        ensureRoot(); bubble?.alpha = 0.55f
-        if (lastJudgment == null || contentBox?.childCount == 0) {
-            setContent(listOf(bigButton("分析当前对话") { onManualAnalyze?.invoke() }))
-        }
+        ensureRoot()
     }
 
     fun showCapturePreview(snapshot: ChatSnapshot) {
         ensureRoot()
-        val views = ArrayList<View>()
-        views.add(line("Xposed 本次采集 · ${snapshot.messages.size} 条", { OverlayViews.COLOR_INK }, 14f, true))
-        snapshot.messages.takeLast(6).forEach { message ->
-            views.add(line("${if (message.side == "me") "我" else "对方"}：${message.text}",
-                { OverlayViews.COLOR_SUB }, 12f))
-        }
-        views.add(bigButton("分析当前对话") { onManualAnalyze?.invoke() })
-        setContent(views)
-        if (!expanded) toggle()
+        preview = snapshot
+        menuVisible = false
+        updateExpanded(true)
     }
 
     fun resetForNewConversation() {
+        analysisEpoch++
+        judging = false
+        generatingReplies = false
         lastJudgment = null
         lastFill = null
         pendingReplies = null
         noteText = null
+        judgmentError = null
         replyError = null
-        contentBox?.removeAllViews()
+        preview = null
+        ctxNotes = 0
+        ctxHistory = 0
     }
 
-    private fun bigButton(label: String, onClick: () -> Unit) =
-        OverlayViews.createButton(ctx, label, onClick).bindAppearance { OverlayViews.styleButton(this) }
-
-    fun showLoading() {
-        ensureRoot(); bubble?.alpha = 1f
-        lastJudgment = null
-        lastFill = null
-        ctxNotes = 0; ctxHistory = 0
-        replyError = null
-        pendingReplies = null
-        setContent(listOf(hint("分析中…")))
-        if (!expanded) toggle()
+    /** 返回本轮标识，调用方在投递异步结果和填入前核对。 */
+    fun showLoading(): Long {
+        resetForNewConversation()
+        if (!hiddenByUser) {
+            judging = true
+            generatingReplies = true
+            menuVisible = false
+            ensureRoot()
+            updateExpanded(true)
+        }
+        return analysisEpoch
     }
 
     fun setContextInfo(notes: Int, history: Int) {
@@ -384,228 +424,80 @@ class OverlayController(private val ctx: Context) {
     }
 
     fun setHiddenForShot(hidden: Boolean) {
-        root?.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
+        composeView?.visibility = if (hidden) View.INVISIBLE else View.VISIBLE
     }
 
     fun showError(msg: String) {
-        ensureRoot(); bubble?.alpha = 1f
-        setContent(listOf(
-            line("出错了", { OverlayViews.COLOR_RED }, 14f, true),
-            hint(msg)))
+        judging = false
+        lastJudgment = null
+        judgmentError = msg
+        ensureRoot()
+        updateExpanded(true)
     }
 
-    fun showJudgment(a: Analysis) {
-        val replies = pendingReplies
-        val combined = if (replies == null) a else a.copy(rankedReplies = replies)
-        lastJudgment = combined
-        render(combined, generating = replies == null)
+    fun showJudgment(analysis: Analysis) {
+        judging = false
+        judgmentError = null
+        lastJudgment = analysis
     }
 
     fun showReplies(ranked: List<RankedReply>, error: String? = null, onFill: (String) -> Unit) {
+        generatingReplies = false
         lastFill = onFill
         replyError = error
         pendingReplies = ranked
-        val a = lastJudgment?.copy(rankedReplies = ranked) ?: return
-        lastJudgment = a
-        render(a, generating = false)
     }
 
     fun toast(msg: String) = Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
 
-    fun hide() {
-        storage.unregisterOnSharedPreferenceChangeListener(appearanceListener)
-        ctx.applicationContext.unregisterComponentCallbacks(configurationListener)
-        val r = root ?: return
-        runCatching { wm.removeView(r) }
-        root = null; bubble = null; panel = null; contentBox = null; dangerDot = null; expanded = false
-    }
-
-    // --------------------------------------------------------------- rendering
-
-    private fun setContent(views: List<View>) {
-        val c = contentBox ?: return
-        c.removeAllViews(); views.forEach { c.addView(it) }
-    }
-
-    private fun render(a: Analysis, generating: Boolean) {
-        ensureRoot(); bubble?.alpha = 1f
-        panel?.background = card(20, panelBg(), stroke = true)
-        val views = ArrayList<View>()
-
-        views.add(hint(
-            if (ctxNotes == 0 && ctxHistory == 0) "未用知识库"
-            else "知识库 $ctxNotes 条 · 历史 $ctxHistory 条"))
-
-        noteText?.let { if (it.isNotBlank()) views.add(hint(it)) }
-
-        a.dangerLevel?.let {
-            val lvl = it.score.roundToInt()
-            views.add(dangerBadge(lvl, it.maxLevel))
-            tintBubbleDanger(it.score)
-        }
-
-        a.trueIntent?.let {
-            views.add(line("对方真实意图：${INTENT[it.choice] ?: it.choice}", { OverlayViews.COLOR_INK }, 15f, true))
-            views.add(hint("把握 ${(it.confidence * 100).roundToInt()}%"))
-        }
-
-        val bits = ArrayList<String>()
-        a.sheNeeds?.let { bits.add("要${(NEEDS[it.choice] ?: it.choice)}") }
-        a.bestAction?.let { bits.add(ACTION[it.choice] ?: it.choice) }
-        a.shouldReplyNow?.let { bits.add(if (it >= 0.5) "可给实质" else "先别给实质") }
-        if (bits.isNotEmpty()) views.add(line(bits.joinToString("  ·  "), { OverlayViews.COLOR_INK }, 13f))
-        a.tensionResolved?.let { if (it >= 0.7) views.add(line("✓ 紧张已缓解", { OverlayViews.COLOR_GREEN }, 12f)) }
-
-        views.add(divider())
-        views.add(line("回复选项（模型推荐）", { OverlayViews.COLOR_SUB }, 12f))
-        if (generating) {
-            views.add(hint("生成中…"))
-        } else {
-            val fill = lastFill ?: {}
-            a.rankedReplies.forEachIndexed { i, r ->
-                views.add(replyCard(i + 1, r.text, (r.prob * 100).roundToInt(), fill))
-            }
-            if (a.rankedReplies.isEmpty()) {
-                val msg = replyError?.let { "回复接口出错：$it" } ?: "（未生成候选回复）"
-                views.add(hint(msg))
-            }
-        }
-        views.add(reAnalyzeBtn())
-
-        setContent(views)
-        if (!expanded) toggle()
-    }
-
-    private fun dangerBadge(lvl: Int, max: Int): View {
-        val row = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(6))
-        }
-        row.addView(TextView(ctx).apply {
-            text = "危险 $lvl/$max"
-            textSize = 12.5f; setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-        }.bindAppearance {
-            setTextColor(if (OverlayViews.isDark) Color.BLACK else Color.WHITE)
-            background = card(16, dangerColor(lvl))
-        })
-        row.addView(TextView(ctx).apply {
-            text = "  " + dangerWord(lvl); textSize = 13f
-            setTypeface(typeface, Typeface.BOLD)
-        }.bindAppearance { setTextColor(dangerColor(lvl)) })
-        return row
-    }
-
-    private fun replyCard(rank: Int, text: String, pct: Int, onFill: (String) -> Unit): View {
-        val top = rank == 1
-        val c = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
-        }.bindAppearance {
-            background = card(16, if (top) OverlayViews.COLOR_PRIMARY_CONTAINER else OverlayViews.COLOR_INPUT_BG)
-        }
-        c.addView(TextView(ctx).apply {
-            this.text = "#$rank · ${pct}%"
-            textSize = 11.5f
-            setTypeface(typeface, Typeface.BOLD)
-        }.bindAppearance { setTextColor(OverlayViews.COLOR_PRIMARY) })
-        c.addView(TextView(ctx).apply {
-            this.text = text
-            textSize = 14f
-            setPadding(0, dp(4), 0, dp(8))
-            setLineSpacing(dp(2).toFloat(), 1f)
-        }.bindAppearance { setTextColor(OverlayViews.COLOR_INK) })
-        val btns = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        btns.addView(pill("复制", false) { copy(text) })
-        btns.addView(pill("填入", true) {
-            Log.d("DIALOGUEROUTE", "overlay: fill tapped")
-            onFill(text)
-            if (expanded) toggle()
-        })
-        c.addView(btns)
-        return c
-    }
-
-    private fun pill(label: String, primary: Boolean, onClick: () -> Unit) = TextView(ctx).apply {
-        text = label; textSize = 12.5f; gravity = Gravity.CENTER
-        setTypeface(typeface, Typeface.BOLD)
-        setPadding(dp(16), dp(6), dp(16), dp(6))
-        layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { rightMargin = dp(8) }
-        setOnClickListener { onClick() }
-    }.bindAppearance {
-        setTextColor(if (primary && OverlayViews.isDark) Color.BLACK
-            else if (primary) Color.WHITE else OverlayViews.COLOR_PRIMARY)
-        background = card(16, if (primary) OverlayViews.COLOR_PRIMARY else OverlayViews.COLOR_CARD_BG, stroke = !primary)
-    }
-
-    private fun reAnalyzeBtn() = TextView(ctx).apply {
-        text = "重新分析"; textSize = 13f; gravity = Gravity.CENTER
-        setPadding(dp(10), dp(10), dp(10), dp(4))
-        setOnClickListener { onManualAnalyze?.invoke() }
-    }.bindAppearance { setTextColor(OverlayViews.COLOR_SUB) }
-
-    private fun tintBubbleDanger(score: Double) {
-        dangerDot?.bindAppearance {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(dangerColor(score.roundToInt()))
-                setStroke(dp(2), OverlayViews.COLOR_CARD_BG)
-            }
-        }
-    }
-
-    // --------------------------------------------------------------- helpers
-
-    private fun line(text: String, color: () -> Int, size: Float, bold: Boolean = false) =
-        TextView(ctx).apply {
-            this.text = text; textSize = size
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(2), 0, dp(2))
-        }.bindAppearance { setTextColor(color()) }
-
-    private fun hint(text: String) = line(text, { OverlayViews.COLOR_SUB }, 12f)
-
-    private fun divider() = View(ctx).apply {
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
-            topMargin = dp(8); bottomMargin = dp(4)
-        }
-    }.bindAppearance { setBackgroundColor(OverlayViews.COLOR_CARD_STROKE) }
-
     private fun copy(text: String) {
-        val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("dialogue_route_reply", text))
+        val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("dialogue_route_reply", text))
         toast("已复制")
     }
 
-    private fun dangerColor(lvl: Int): Int = when {
-        lvl >= 6 -> OverlayViews.COLOR_RED
-        lvl >= 3 -> Color.parseColor(if (OverlayViews.isDark) "#E1B76B" else "#916000")
-        else -> OverlayViews.COLOR_GREEN
+    fun hide() {
+        main.removeCallbacks(longPress)
+        if (listenersRegistered) {
+            storage.unregisterOnSharedPreferenceChangeListener(appearanceListener)
+            ctx.applicationContext.unregisterComponentCallbacks(configurationListener)
+            listenersRegistered = false
+        }
+        val cv = composeView
+        val owner = lifecycleOwner
+        composeView = null
+        lifecycleOwner = null
+        lp = null
+        panelWidthPx = 0
+        panelHeightPx = 0
+        expanded = false
+        menuVisible = false
+        hiddenByUser = false
+        resetForNewConversation()
+        cv?.disposeComposition()
+        if (cv != null) runCatching { wm.removeView(cv) }
+        owner?.destroy()
+    }
+}
+
+private class OverlayLifecycleOwner : LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner {
+    private val registry = LifecycleRegistry(this)
+    private val savedState = SavedStateRegistryController.create(this)
+    private val store = ViewModelStore()
+
+    override val lifecycle: Lifecycle get() = registry
+    override val savedStateRegistry: SavedStateRegistry get() = savedState.savedStateRegistry
+    override val viewModelStore: ViewModelStore get() = store
+
+    fun handleLifecycleEvent(event: Lifecycle.Event) = registry.handleLifecycleEvent(event)
+
+    fun performRestore(savedStateBundle: Bundle?) {
+        savedState.performAttach()
+        savedState.performRestore(savedStateBundle)
     }
 
-    private fun dangerWord(lvl: Int): String = when {
-        lvl >= 8 -> "很危险"
-        lvl >= 6 -> "偏危险"
-        lvl >= 3 -> "留神"
-        else -> "安全"
-    }
-
-    companion object {
-        private val INTENT = mapOf(
-            "confirm_you_care" to "确认你在不在乎", "vent_anger" to "在发泄情绪",
-            "request_action" to "要你办事", "seek_explanation" to "要个解释",
-            "casual_chat" to "随便聊聊", "close_topic" to "事情过去了")
-        private val NEEDS = mapOf(
-            "apology" to "道歉", "action" to "具体行动", "explanation" to "解释",
-            "care" to "你的在乎", "nothing" to "（不用做什么）")
-        private val ACTION = mapOf(
-            "check_history" to "翻聊天记录", "apologize" to "先道歉", "give_commitment" to "给承诺",
-            "explain" to "解释清楚", "acknowledge" to "接住情绪", "say_less" to "少说两句",
-            "make_plan" to "定个安排")
+    fun destroy() {
+        registry.currentState = Lifecycle.State.DESTROYED
+        store.clear()
     }
 }

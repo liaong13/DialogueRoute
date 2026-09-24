@@ -56,8 +56,10 @@ open class ChatCaptureService : AccessibilityService() {
     private var overlay: OverlayController? = null
 
     private var lastSignature: String = ""
+    private var conversationKey: Pair<String, String?>? = null
     private var activePkg: String? = null
     private var analyzing = false
+    private var analysisToken = -1L
 
     /** Last known-good (non-transient) title per package. See [isTransientTitle]:
      *  a page like X's DM thread briefly shows "连接中…" as `snapshot.title`
@@ -124,7 +126,7 @@ open class ChatCaptureService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        if (!prefs.enabled) { main.post { overlay?.hide() }; return }
+        if (!prefs.enabled) { clearConversation(); overlay?.hide(); return }
 
         val type = event.eventType
         // Decide "did we leave the chat app" from the REAL active window, not the
@@ -142,6 +144,7 @@ open class ChatCaptureService : AccessibilityService() {
         if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val fg = rootInActiveWindow?.packageName?.toString()
             if (fg != null && fg !in adapters) {
+                clearConversation()
                 foregroundPkg = fg
                 val drop = fg == packageName ||
                     fg.contains("launcher", ignoreCase = true) ||
@@ -161,6 +164,7 @@ open class ChatCaptureService : AccessibilityService() {
 
     private fun maybeCapture() {
         if (prefs.xposedEnabled && XposedProbeBridge.isContentActive(this)) {
+            clearConversation()
             overlay?.hide()
             return
         }
@@ -170,10 +174,19 @@ open class ChatCaptureService : AccessibilityService() {
         // the only way in for them is the bubble menu's "截屏识别一次".
         val adapter = adapters[pkg] ?: return
         // Only act inside a chat window (the adapter returns null elsewhere).
-        val rawSnapshot = adapter.extract(root, resources) ?: return
+        val rawSnapshot = adapter.extract(root, resources) ?: run {
+            clearConversation()
+            overlay?.hide()
+            return
+        }
         // Stabilize the title BEFORE anything below reads it: some apps (X) show
         // a transient "连接中…" title for a moment right after opening a thread.
         val snapshot = stabilizeTitle(pkg ?: "", rawSnapshot)
+        val key = (pkg ?: "") to snapshot.title
+        if (conversationKey != key) {
+            clearConversation()
+            conversationKey = key
+        }
         if (!prefs.isAllowed(snapshot.title)) { main.post { overlay?.hide() }; return }
         // In a chat window but the tree holds no text (Feishu draws its bodies,
         // WeChat hides them when the disguise fails) → screenshot + OCR, subject
@@ -249,10 +262,20 @@ open class ChatCaptureService : AccessibilityService() {
 
     private fun runAnalysis() {
         val snapshot = pendingSnapshot ?: return
-        if (analyzing) return
-        if (!prefs.hasKey()) { main.post { overlay?.showError("未设置判断接口密钥，去设置里填") }; return }
+        val ui = overlay ?: return
+        if (!prefs.enabled) return
+        if (analyzing && ui.isCurrentAnalysis(analysisToken)) return
+        if (!prefs.hasKey()) { ui.showError("未设置判断接口密钥，去设置里填"); return }
+        val token = ui.showLoading()
+        if (!ui.isCurrentAnalysis(token)) return
+        analysisToken = token
         analyzing = true
-        main.post { overlay?.showLoading(); overlay?.setNote(snapshot.note) }
+        ui.setNote(snapshot.note)
+        var remaining = 2
+        fun finishBranch() {
+            remaining--
+            if (remaining == 0 && analysisToken == token) analyzing = false
+        }
         val client = JevClient(prefs)
         val rel = prefs.relationship
         val pkg = activePkg ?: ""
@@ -265,14 +288,19 @@ open class ChatCaptureService : AccessibilityService() {
             } catch (e: Exception) {
                 Log.w(TAG, "context build failed: ${e.javaClass.simpleName}"); null
             }
-            main.post { overlay?.setContextInfo(ctx?.notes?.size ?: 0, ctx?.history?.size ?: 0) }
+            main.post {
+                if (ui.isCurrentAnalysis(token)) ui.setContextInfo(ctx?.notes?.size ?: 0, ctx?.history?.size ?: 0)
+            }
 
             // Judgment is fast (~1s) — show it immediately.
             submit {
-                val judgment = client.judge(snapshot, rel, ctx)
+                val judgment = runCatching { client.judge(snapshot, rel, ctx) }
                 main.post {
-                    if (judgment.error != null) { analyzing = false; overlay?.showError(judgment.error) }
-                    else overlay?.showJudgment(judgment)
+                    finishBranch()
+                    if (!ui.isCurrentAnalysis(token)) return@post
+                    judgment.fold(onSuccess = {
+                        if (it.error != null) ui.showError(it.error) else ui.showJudgment(it)
+                    }, onFailure = { ui.showError("判断失败：${it.javaClass.simpleName}") })
                 }
             }
             // Candidate replies are slower (generative + rank) — fill in when ready.
@@ -283,11 +311,25 @@ open class ChatCaptureService : AccessibilityService() {
                     emptyList()
                 }
                 main.post {
-                    analyzing = false
-                    overlay?.showReplies(ranked, replyError) { text -> fillInput(text) }
+                    finishBranch()
+                    if (!ui.isCurrentAnalysis(token)) return@post
+                    ui.showReplies(ranked, replyError) { text ->
+                        if (ui.isCurrentAnalysis(token)) fillInput(text, pkg, snapshot)
+                    }
                 }
             }
         }
+    }
+
+    private fun clearConversation() {
+        main.removeCallbacks(debounce)
+        pendingSnapshot = null
+        currentSnapshot = null
+        conversationKey = null
+        lastSignature = ""
+        lastOcrSignature = ""
+        analyzing = false
+        overlay?.resetForNewConversation()
     }
 
     // ------------------------------------------------------------------ OCR
@@ -479,8 +521,20 @@ open class ChatCaptureService : AccessibilityService() {
     }
 
     /** Fill the chat input box with the chosen reply (never sends). */
-    private fun fillInput(text: String) {
+    private fun fillInput(text: String, expectedPackage: String, expected: ChatSnapshot) {
         submit {
+            // 每次写入前重读目标聊天页；不能把旧候选写进新会话或普通搜索框。
+            fun targetMatches(): Boolean {
+                if (!prefs.enabled) return false
+                val root = rootInActiveWindow ?: return false
+                if (root.packageName?.toString() != expectedPackage) return false
+                val actual = adapters[expectedPackage]?.extract(root, resources) ?: return false
+                return actual.title == expected.title && actual.signature() == expected.signature()
+            }
+            if (!targetMatches()) {
+                main.post { copyToClipboard(text); overlay?.toast("当前会话已变化或无法核对，已复制回复") }
+                return@submit
+            }
             // Fast path: SET_TEXT works when the box already has input focus and no
             // IME composing session is active.
             var ok = trySetText(text)
@@ -494,9 +548,13 @@ open class ChatCaptureService : AccessibilityService() {
                 if (edit != null) {
                     edit.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                     Thread.sleep(300)
-                    ok = trySetText(text)
+                    ok = targetMatches() && trySetText(text)
                     if (!ok) {
                         copyToClipboard(text)
+                        if (!targetMatches()) {
+                            main.post { overlay?.toast("当前会话已变化，已复制回复") }
+                            return@submit
+                        }
                         val focused = rootInActiveWindow?.let { findEditable(it) } ?: edit
                         setTextRaw(focused, "")
                         val pasted = focused.performAction(AccessibilityNodeInfo.ACTION_PASTE)
