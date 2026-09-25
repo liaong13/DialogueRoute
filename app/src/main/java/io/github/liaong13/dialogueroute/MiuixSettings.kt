@@ -185,6 +185,8 @@ private fun SettingsContent(bottomTabBarHeight: Dp, onDirtyChange: (Boolean) -> 
 
     var xposed by remember { mutableStateOf(prefs.xposedEnabled) }
     var themeMode by remember { mutableStateOf(prefs.themeMode) }
+    var dynamicColor by remember { mutableStateOf(prefs.dynamicColor) }
+    var uiStyle by remember { mutableStateOf(prefs.uiStyle) }
     val initialProviders = remember(prefs) {
         val saved = ModelProvider.decode(prefs.modelProviders)
         if (saved.isNotEmpty() &&
@@ -219,7 +221,7 @@ private fun SettingsContent(bottomTabBarHeight: Dp, onDirtyChange: (Boolean) -> 
     var kbResult by remember { mutableStateOf("") }
     var clearDialog by remember { mutableStateOf(false) }
     var section by remember { mutableIntStateOf(0) }
-    val currentValues = listOf(themeMode, xposed, providers, judgeProviderId, replyProviderId,
+    val currentValues = listOf(themeMode, dynamicColor, uiStyle, xposed, providers, judgeProviderId, replyProviderId,
         visionProviderId, judgeModel, replyModel, visionModel, relationship, whitelist,
         autoAnalyze, ocrEngine, ocrFallback, ocrAuto, historyEnabled, historyCount, opacity)
     var savedValues by remember { mutableStateOf(currentValues) }
@@ -236,8 +238,9 @@ private fun SettingsContent(bottomTabBarHeight: Dp, onDirtyChange: (Boolean) -> 
     }
 
     Column(modifier = Modifier.fillMaxSize().imePadding()) {
-        Column(modifier = Modifier.padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(modifier = Modifier.padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 8.dp)
+            .glassSurface(radius = 24.dp).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(Modifier.weight(1f)) {
@@ -253,9 +256,9 @@ private fun SettingsContent(bottomTabBarHeight: Dp, onDirtyChange: (Boolean) -> 
         Crossfade(targetState = section, modifier = Modifier.weight(1f),
             animationSpec = tween(180), label = "settingsSection") { visibleSection ->
             LazyColumn(modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp,
+                contentPadding = PaddingValues(start = 20.dp, top = 0.dp, end = 20.dp,
                     bottom = if (dirty) 20.dp else bottomTabBarHeight + 20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (visibleSection == 1) {
                     item { SectionHeading("权限设置") }
                     item {
@@ -436,6 +439,19 @@ private fun SettingsContent(bottomTabBarHeight: Dp, onDirtyChange: (Boolean) -> 
                                 ChoiceRow("深色", themeMode == Prefs.THEME_DARK) { themeMode = Prefs.THEME_DARK }
                                 ChoiceRow("跟随系统", themeMode == Prefs.THEME_SYSTEM) { themeMode = Prefs.THEME_SYSTEM }
                             }
+                            RoundedSwitchPreference(title = "跟随壁纸动态主题色",
+                                summary = "Android 12 及以上使用系统 Material You 配色；旧系统保留应用配色。",
+                                checked = dynamicColor, onCheckedChange = { dynamicColor = it })
+                            Spacer(Modifier.height(12.dp))
+                            SupportingText("界面风格")
+                            Column(Modifier.selectableGroup()) {
+                                ChoiceRow("Material 3", uiStyle == Prefs.STYLE_MATERIAL3) {
+                                    uiStyle = Prefs.STYLE_MATERIAL3
+                                }
+                                ChoiceRow("Miuix", uiStyle == Prefs.STYLE_MIUIX) {
+                                    uiStyle = Prefs.STYLE_MIUIX
+                                }
+                            }
                         }
                     }
                     item { SectionHeading("分析设置") }
@@ -540,6 +556,8 @@ private fun SettingsContent(bottomTabBarHeight: Dp, onDirtyChange: (Boolean) -> 
                 prefs.contextHistoryCount = historyCount.trim().toIntOrNull()?.coerceIn(0, 100) ?: 30
                 prefs.overlayOpacity = opacity.toInt()
                 prefs.themeMode = themeMode
+                prefs.dynamicColor = dynamicColor
+                prefs.uiStyle = uiStyle
                 if (prefs.xposedEnabled != xposed) {
                     prefs.xposedEnabled = xposed
                     XposedCaptureRuntime.get(context).onChatClosed()

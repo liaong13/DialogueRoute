@@ -3,10 +3,12 @@ package io.github.liaong13.dialogueroute
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,11 +22,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import io.github.liaong13.dialogueroute.core.kb.Contact
 import io.github.liaong13.dialogueroute.core.kb.KbStore
 import io.github.liaong13.dialogueroute.core.kb.Note
@@ -33,7 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 
 @Composable
-internal fun KnowledgeScreen() {
+internal fun KnowledgeScreen(bottomPadding: Dp = 112.dp) {
     val context = LocalContext.current
     val store = remember(context) { KbStore.get(context) }
     var revision by remember { mutableIntStateOf(0) }
@@ -78,13 +80,16 @@ internal fun KnowledgeScreen() {
 
     val notes = remember(revision) { store.notes().sortedByDescending { it.updatedAt } }
     val contacts = remember(revision) { store.contacts().sortedByDescending { it.updatedAt } }
-    val dark = LocalAppDarkTheme.current
-    val noteTint = if (dark) Color(0xFFAFCBFF) else Color(0xFF3972BE)
-    val contactTint = if (dark) Color(0xFF88DED9) else Color(0xFF23827D)
+    val noteTint = MaterialTheme.colorScheme.primary
+    val contactTint = MaterialTheme.colorScheme.tertiary
     LazyColumn(modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 112.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { PageHeading("知识库", "记下重要的小事，让回应更贴近你。") }
+        item {
+            Box(Modifier.fillMaxWidth().glassSurface(radius = 24.dp).padding(16.dp)) {
+                PageHeading("知识库", "记下重要的小事，让回应更贴近你。")
+            }
+        }
         item {
             GlassTabs(tabs = listOf("笔记 ${notes.size}", "联系人 ${contacts.size}"),
                 selectedTabIndex = page, onTabSelected = { page = it })

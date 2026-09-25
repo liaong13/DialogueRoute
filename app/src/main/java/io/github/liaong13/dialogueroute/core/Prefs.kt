@@ -203,6 +203,16 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         else -> false
     }
 
+    var dynamicColor: Boolean
+        get() = sp.getBoolean(KEY_DYNAMIC_COLOR, false)
+        set(value) = sp.edit().putBoolean(KEY_DYNAMIC_COLOR, value).apply()
+
+    var uiStyle: String
+        get() = sp.getString(KEY_UI_STYLE, STYLE_MATERIAL3)
+            ?.takeIf { it == STYLE_MATERIAL3 || it == STYLE_MIUIX } ?: STYLE_MATERIAL3
+        set(value) = sp.edit().putString(KEY_UI_STYLE,
+            value.takeIf { it == STYLE_MATERIAL3 || it == STYLE_MIUIX } ?: STYLE_MATERIAL3).apply()
+
     /** Free-text describing who the other person is; goes into Jev's state. */
     var relationship: String
         get() = sp.getString(K_REL, DEFAULT_REL) ?: DEFAULT_REL
@@ -315,9 +325,13 @@ class Prefs(context: Context, prefsName: String = PREFS_MAIN) {
         /** The one real config file. Anything else is a scratch instance. */
         const val PREFS_MAIN = "dialogue_route"
         const val KEY_THEME_MODE = "theme_mode"
+        const val KEY_DYNAMIC_COLOR = "dynamic_color"
+        const val KEY_UI_STYLE = "ui_style"
         const val THEME_LIGHT = "light"
         const val THEME_DARK = "dark"
         const val THEME_SYSTEM = "system"
+        const val STYLE_MATERIAL3 = "material3"
+        const val STYLE_MIUIX = "miuix"
 
         private const val K_LEGACY_KEY = "openrouter_key"
         private const val K_MIGRATED_V13 = "prefs_migrated_v13"

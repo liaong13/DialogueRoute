@@ -87,6 +87,14 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import java.util.function.Consumer
+import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
+import top.yukonga.miuix.kmp.basic.RadioButton as MiuixRadioButton
+import top.yukonga.miuix.kmp.basic.Switch as MiuixSwitch
+import top.yukonga.miuix.kmp.basic.Text as MiuixText
+import top.yukonga.miuix.kmp.basic.TextButton as MiuixTextButton
+import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 internal fun PageHeading(title: String, subtitle: String? = null) {
@@ -171,8 +179,8 @@ internal fun SetupStatusRow(title: String, description: String, status: String, 
 internal fun EmptyState(title: String, description: String, icon: ImageVector,
                         actionLabel: String, onAction: () -> Unit) {
     GlassCard(padding = PaddingValues(24.dp)) {
-        val dark = LocalAppDarkTheme.current
-        val tint = if (dark) Color(0xFFAFCBFF) else Color(0xFF3972BE)
+        val colors = MaterialTheme.colorScheme
+        val tint = colors.primary
         Box(Modifier.align(Alignment.CenterHorizontally)
             .size(width = 216.dp, height = 172.dp), contentAlignment = Alignment.Center) {
             Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(
@@ -189,14 +197,13 @@ internal fun EmptyState(title: String, description: String, icon: ImageVector,
             val frontShape = RoundedCornerShape(22.dp)
             Column(Modifier.offset(y = 4.dp).size(width = 112.dp, height = 128.dp)
                 .clip(frontShape)
-                .background(Brush.linearGradient(if (dark)
-                    listOf(Color(0xFF9ABDF3), Color(0xFF567DBC))
-                else listOf(Color(0xFFE1EDFF), Color(0xFFACC9F5))))
-                .border(1.dp, Color.White.copy(alpha = if (dark) 0.52f else 0.84f), frontShape),
+                .background(Brush.linearGradient(listOf(colors.primaryContainer,
+                    colors.secondaryContainer)))
+                .border(1.dp, colors.outline.copy(alpha = 0.32f), frontShape),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center) {
                 Icon(icon, contentDescription = null, modifier = Modifier.size(58.dp),
-                    tint = if (dark) Color(0xFF203C69) else Color(0xFF3467A8))
+                    tint = colors.onPrimaryContainer)
                 Spacer(Modifier.height(12.dp))
                 Spacer(Modifier.size(width = 56.dp, height = 4.dp)
                     .background(Color.White.copy(alpha = 0.44f), RoundedCornerShape(4.dp)))
@@ -227,7 +234,25 @@ internal fun UiField(label: String, value: String, onValueChange: (String) -> Un
                          androidx.compose.ui.text.input.VisualTransformation.None) {
     val secret = visualTransformation is PasswordVisualTransformation
     var revealed by remember { mutableStateOf(false) }
-    OutlinedTextField(
+    if (LocalMiuixStyle.current) {
+        MiuixTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = label,
+            singleLine = singleLine,
+            minLines = if (singleLine) 1 else 3,
+            maxLines = if (singleLine) 1 else 6,
+            visualTransformation = if (secret && revealed) VisualTransformation.None else visualTransformation,
+            keyboardOptions = if (secret) KeyboardOptions(
+                keyboardType = KeyboardType.Password, autoCorrectEnabled = false
+            ) else KeyboardOptions.Default,
+            trailingIcon = if (secret) {
+                { MiuixTextButton(text = if (revealed) "隐藏" else "显示",
+                    onClick = { revealed = !revealed }) }
+            } else null,
+        )
+    } else OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = Modifier.fillMaxWidth(),
@@ -261,18 +286,30 @@ internal fun SecondaryAction(label: String, icon: ImageVector? = null, onClick: 
 
 @Composable
 private fun GlassAction(label: String, icon: ImageVector?, onClick: () -> Unit, primary: Boolean) {
+    if (LocalMiuixStyle.current) {
+        val foreground = if (primary) MiuixTheme.colorScheme.onPrimary
+            else MiuixTheme.colorScheme.onSecondaryVariant
+        MiuixButton(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            colors = if (primary) MiuixButtonDefaults.buttonColorsPrimary()
+                else MiuixButtonDefaults.buttonColors()) {
+            if (icon != null) Icon(icon, contentDescription = null,
+                modifier = Modifier.size(19.dp), tint = foreground)
+            if (icon != null) Spacer(Modifier.size(8.dp))
+            MiuixText(label, color = foreground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        return
+    }
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.97f else 1f,
         animationSpec = spring(dampingRatio = 0.82f, stiffness = 550f), label = "glassActionPress")
-    val dark = LocalAppDarkTheme.current
+    val colors = MaterialTheme.colorScheme
     val modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
         .graphicsLayer { scaleX = scale; scaleY = scale }
         .glassSurface(radius = 16.dp)
-        .then(if (primary) Modifier.background(
-            if (dark) Color(0xFFAFCBEE).copy(alpha = 0.70f)
-            else Color(0xFFBED7F8).copy(alpha = 0.68f)) else Modifier)
-    val foreground = if (primary) Color(0xFF15253A) else MaterialTheme.colorScheme.primary
+        .then(if (primary) Modifier.background(colors.primaryContainer.copy(alpha = 0.80f))
+            else Modifier)
+    val foreground = if (primary) colors.onPrimaryContainer else colors.primary
     if (primary) {
         Button(onClick = onClick, modifier = modifier, interactionSource = interaction,
             shape = RoundedCornerShape(16.dp),
@@ -329,10 +366,14 @@ internal fun RoundedSwitchPreference(title: String, summary: String? = null, che
             Text(title, fontSize = 16.sp, color = colors.onSurface)
             if (summary != null) SupportingText(summary)
         }
-        Switch(checked = checked, onCheckedChange = null, thumbContent = {
-            Icon(if (checked) AppIcons.Check else AppIcons.Close,
-                contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize))
-        })
+        if (LocalMiuixStyle.current) {
+            MiuixSwitch(checked = checked, onCheckedChange = null)
+        } else {
+            Switch(checked = checked, onCheckedChange = null, thumbContent = {
+                Icon(if (checked) AppIcons.Check else AppIcons.Close,
+                    contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize))
+            })
+        }
     }
 }
 
@@ -382,13 +423,10 @@ internal fun AppDialog(show: Boolean, title: String, summary: String? = null,
             Box(modifier = Modifier.widthIn(max = 448.dp).fillMaxWidth()
                 .padding(horizontal = 24.dp, vertical = 24.dp).imePadding()) {
                 Column(modifier = Modifier.fillMaxWidth().shadow(18.dp, shape).clip(shape)
-                    .background(Brush.verticalGradient(if (dark)
-                        listOf(Color(0xFF26394D).copy(alpha = if (blurEnabled) 0.90f else 0.97f),
-                            Color(0xFF1A2A3D).copy(alpha = if (blurEnabled) 0.92f else 0.98f))
-                    else listOf(Color.White.copy(alpha = if (blurEnabled) 0.94f else 0.98f),
-                        Color(0xFFF0F5FC).copy(alpha = if (blurEnabled) 0.92f else 0.97f))))
-                    .border(0.75.dp, if (dark) Color(0xFFB5CCE7).copy(alpha = 0.25f)
-                        else Color.White.copy(alpha = 0.72f), shape)
+                    .background(Brush.verticalGradient(listOf(
+                        MaterialTheme.colorScheme.surface.copy(alpha = if (blurEnabled) 0.90f else 0.97f),
+                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = if (blurEnabled) 0.92f else 0.98f))))
+                    .border(0.75.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), shape)
                     .verticalScroll(rememberScrollState()).padding(20.dp)) {
                     Text(title, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface)
@@ -429,6 +467,7 @@ internal fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
         Text(label, modifier = Modifier.weight(1f), fontSize = 16.sp,
             fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
             color = if (selected) colors.primary else colors.onSurface)
-        RadioButton(selected = selected, onClick = null)
+        if (LocalMiuixStyle.current) MiuixRadioButton(selected = selected, onClick = null)
+        else RadioButton(selected = selected, onClick = null)
     }
 }
