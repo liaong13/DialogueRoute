@@ -11,6 +11,9 @@ Jev Chat Assistant. It is not an official upstream release or an endorsement
 by the original authors. Fork modifications remain under the MIT License.
 The upstream attribution and notice are preserved below.
 
+Third-party UI dependency: Miuix (compose-miuix-ui contributors),
+https://github.com/compose-miuix-ui/miuix, licensed under Apache-2.0.
+
 上游项目 / Upstream: Jev 聊天助手 (Jev Chat Assistant)
 Copyright (c) 2026 Finderchangchang and the jev-chat contributors
 https://github.com/jev-chat/jev-chat-jarvis · https://chatjevs.com

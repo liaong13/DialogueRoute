@@ -21,9 +21,9 @@ Codex 的仓库开发约定统一维护在根目录 [AGENTS.md](../AGENTS.md)。
 
 当前 Gradle 配置为 `versionName=1.3`、`versionCode=4`，V1.4 是开发方案名称，尚未更新应用版本号。使用 JDK 17 或 25、SDK Platform 37、Gradle Wrapper 9.7.1、AGP 9.4.1；Java 源码/目标级别为 17，compileSdk 37、targetSdk 35、minSdk 30，仅包含 `arm64-v8a`。
 
-主界面与悬浮窗已启用 Compose Material 3，Compose 插件为 2.4.0、BOM 为 2026.09.00、Activity Compose 为 1.13.0；版本以根目录、应用 Gradle 配置和版本目录为准。Manifest 的唯一 Activity 仍为 `MiuixActivity`，主页、知识库、设置使用内部页签，外部入口通过 `EXTRA_TAB` 选择页签。旧 `MainActivity`、`SettingsActivity`、`KnowledgeActivity` 和 `Insets.kt` 已删除。
+主界面与悬浮窗已启用 Compose Material 3 和 Miuix 控件库，Compose 插件为 2.4.0、BOM 为 2026.09.00、Activity Compose 为 1.13.0；版本以根目录、应用 Gradle 配置和版本目录为准。Manifest 的唯一 Activity 仍为 `MiuixActivity`，主页、知识库、设置使用内部页签，外部入口通过 `EXTRA_TAB` 选择页签。旧 `MainActivity`、`SettingsActivity`、`KnowledgeActivity` 和 `Insets.kt` 已删除。
 
-设置修改需点击“保存设置”；未保存时切换页签或返回会提示继续编辑或放弃修改。外观设置保存到 `Prefs.themeMode`，支持 `light`、`dark`、`system`，缺省或非法值回退浅色。主界面、系统栏与 Compose 悬浮窗共用该选择，悬浮窗监听偏好及系统配置变化更新配色。主题回归需覆盖已展开面板、跟随系统、窗口隐藏后重开，以及监听器释放。
+设置修改需点击“保存设置”；未保存时切换页签或返回会提示继续编辑或放弃修改。外观设置保存到 `Prefs.themeMode`、`Prefs.dynamicColor` 和 `Prefs.uiStyle`；明暗模式支持 `light`、`dark`、`system`，缺省或非法值回退浅色。Android 12 及以上可启用系统动态配色，旧系统使用应用配色。`Miuix` 风格使用 `miuix-ui-android:0.9.3` 的主题、底栏、侧栏、标签、输入框、按钮、开关和单选控件；`Material 3` 风格保留原控件路径。玻璃背景和部分业务卡片由共享 Haze 组件提供，两种风格共用。主界面、系统栏与 Compose 悬浮窗同步外观设置；悬浮面板使用系统跨窗口模糊能力并在不支持时回退半透明背景。窄屏 Material 3 底栏使用可拖动胶囊指示器，大屏（宽度不小于 840dp）使用侧栏；系统关闭动画时导航直接切换页面。主题回归需覆盖已展开面板、跟随系统、窗口隐藏后重开、大小屏切换，以及监听器释放。
 
 macOS/Linux 使用 `sh gradlew :app:assembleDebug`；Wrapper 在 Git 中没有执行位。Windows 使用 `gradlew.bat :app:assembleDebug`。APK 输出为 `app/build/outputs/apk/debug/app-debug.apk`，SDK 路径由本机 `local.properties` 配置。
 
