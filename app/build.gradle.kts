@@ -89,6 +89,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
     implementation("androidx.compose.material3:material3")
+    implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("dev.chrisbanes.haze:haze:2.0.0")
     implementation("dev.chrisbanes.haze:haze-glass:2.0.0")
