@@ -26,7 +26,6 @@ import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -68,6 +67,8 @@ class OverlayController(private val ctx: Context) {
     private var analysisEpoch = 0L
 
     private var themeMode by mutableStateOf(prefs.themeMode)
+    private var dynamicColor by mutableStateOf(prefs.dynamicColor)
+    private var uiStyle by mutableStateOf(prefs.uiStyle)
     private var opacity by mutableStateOf(prefs.overlayOpacity / 100f)
     private var crossWindowBlurEnabled by mutableStateOf(false)
     private var configuration by mutableStateOf(Configuration(ctx.resources.configuration))
@@ -141,13 +142,15 @@ class OverlayController(private val ctx: Context) {
     private val screenH get() = ctx.resources.displayMetrics.heightPixels
     private val panelWidthDp: Int get() {
         val width = configuration.screenWidthDp
-        val fraction = if (menuVisible) 0.74f else 0.84f
-        return minOf(if (menuVisible) 220 else 252,
+        val fraction = if (menuVisible) 0.74f else 0.78f
+        return minOf(if (menuVisible) 220 else 272,
             (width * fraction).roundToInt().coerceAtLeast(1), (width - 16).coerceAtLeast(1))
     }
 
     private fun refreshAppearance() {
         themeMode = prefs.themeMode
+        dynamicColor = prefs.dynamicColor
+        uiStyle = prefs.uiStyle
         opacity = prefs.overlayOpacity / 100f
         configuration = Configuration(ctx.resources.configuration)
     }
@@ -189,7 +192,7 @@ class OverlayController(private val ctx: Context) {
                 Prefs.THEME_SYSTEM -> systemDark
                 else -> false
             }
-            DialogueTheme(dark = darkTheme) {
+            DialogueTheme(dark = darkTheme, dynamicColor = dynamicColor, uiStyle = uiStyle) {
                 if (expanded) {
                     OverlayPanel(
                         analysis = lastJudgment, replies = pendingReplies,
@@ -198,8 +201,8 @@ class OverlayController(private val ctx: Context) {
                         notes = ctxNotes, history = ctxHistory, note = noteText,
                         preview = preview, menuVisible = menuVisible,
                         panelWidth = panelWidthDp.dp,
-                        contentHeight = minOf(236f, configuration.screenHeightDp * 0.30f).dp,
-                        opacity = if (crossWindowBlurEnabled) 0.35f + opacity * 0.25f else opacity,
+                        contentHeight = minOf(248f, configuration.screenHeightDp * 0.32f).dp,
+                        opacity = opacity,
                         onClose = { updateExpanded(false) },
                         onPanelTouch = ::onPanelTouch,
                         onSizeChanged = { width, height ->
@@ -230,7 +233,6 @@ class OverlayController(private val ctx: Context) {
                 } else {
                     OverlayBubble(
                         dangerLevel = lastJudgment?.dangerLevel?.score,
-                        blurredBackground = crossWindowBlurEnabled,
                         onTouch = ::onBubbleTouch,
                         onOpen = { updateExpanded(true) },
                         onMenu = ::showMenu
@@ -387,11 +389,12 @@ class OverlayController(private val ctx: Context) {
         val dark = themeMode == Prefs.THEME_DARK || (themeMode == Prefs.THEME_SYSTEM && systemDark)
         blurBackground?.apply {
             cornerRadius = dp(if (expanded) 16 else 24).toFloat()
-            setColor(if (dark) android.graphics.Color.argb(if (enabled) 68 else 0, 30, 42, 58)
-                else android.graphics.Color.argb(if (enabled) 68 else 0, 224, 236, 250))
+            setColor(if (!expanded || !enabled) android.graphics.Color.TRANSPARENT
+                else if (dark) android.graphics.Color.argb(68, 28, 29, 34)
+                else android.graphics.Color.argb(68, 248, 248, 250))
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            dialog.window?.setBackgroundBlurRadius(if (enabled) dp(if (expanded) 36 else 24) else 0)
+            dialog.window?.setBackgroundBlurRadius(if (enabled && expanded) dp(36) else 0)
         }
     }
 

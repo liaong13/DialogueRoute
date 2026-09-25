@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,8 +35,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -44,19 +47,18 @@ import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.liaong13.dialogueroute.AppIcons
+import io.github.liaong13.dialogueroute.R
 import io.github.liaong13.dialogueroute.core.Analysis
 import io.github.liaong13.dialogueroute.core.ChatSnapshot
 import io.github.liaong13.dialogueroute.core.RankedReply
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import kotlin.math.roundToInt
@@ -65,7 +67,6 @@ import kotlin.math.roundToInt
 @Composable
 internal fun OverlayBubble(
     dangerLevel: Double?,
-    blurredBackground: Boolean,
     onTouch: (MotionEvent) -> Boolean,
     onOpen: () -> Unit,
     onMenu: () -> Unit
@@ -75,7 +76,7 @@ internal fun OverlayBubble(
         animationSpec = spring(dampingRatio = 0.72f, stiffness = 550f), label = "overlayBubblePress")
     val colors = MaterialTheme.colorScheme
     Box(
-        Modifier.size(48.dp)
+        Modifier.size(56.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .semantics {
                 role = Role.Button
@@ -93,18 +94,18 @@ internal fun OverlayBubble(
         contentAlignment = Alignment.Center
     ) {
         Box(
-            Modifier.size(44.dp).shadow(5.dp, CircleShape).clip(CircleShape)
-                .background(colors.surface.copy(alpha = if (blurredBackground) 0.48f else 0.82f))
-                .border(0.8.dp, colors.onSurface.copy(alpha = 0.28f), CircleShape),
+            Modifier.size(50.dp).shadow(8.dp, CircleShape).clip(CircleShape)
+                .background(colors.primary)
+                .border(1.dp, colors.onPrimary.copy(alpha = 0.25f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            BrandIcon(28.dp, colors.primary)
+            BrandIcon(29.dp)
         }
         dangerLevel?.let { score ->
             Box(
-                Modifier.size(10.dp).align(Alignment.TopEnd)
+                Modifier.size(13.dp).align(Alignment.TopEnd)
                     .background(dangerColor(score.roundToInt()), CircleShape)
-                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                    .border(2.5.dp, colors.surface, CircleShape)
             )
         }
     }
@@ -156,35 +157,44 @@ internal fun OverlayPanel(
             .shadow(8.dp, shape)
             .clip(shape)
             .background(colors.surface.copy(alpha = opacity))
-            .border(0.8.dp, colors.onSurface.copy(alpha = 0.22f), shape)
+            .border(0.8.dp, colors.outline.copy(alpha = 0.32f), shape)
             .onSizeChanged { onSizeChanged(it.width, it.height) }
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // 顶栏 Header
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 38.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                .background(Brush.horizontalGradient(listOf(
+                    colors.primaryContainer.copy(alpha = 0.28f),
+                    colors.surface.copy(alpha = 0.04f))))
+                .heightIn(min = 36.dp).padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
-                Modifier.weight(1f).heightIn(min = 38.dp)
+                Modifier.weight(1f).heightIn(min = 36.dp)
                     .pointerInteropFilter(onTouchEvent = onPanelTouch)
                     .semantics { contentDescription = "按住标题移动悬浮窗" },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                BrandIcon(20.dp, colors.primary)
+                Box(Modifier.size(26.dp).clip(RoundedCornerShape(8.dp))
+                    .background(colors.primary), contentAlignment = Alignment.Center) {
+                    BrandIcon(17.dp)
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     Text(
                         if (menuVisible) "快捷操作" else "对话攻略",
                         color = colors.onSurface,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
                     )
                     Text(
                         "按住移动",
                         color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-                        fontSize = 9.sp
+                        fontSize = 9.sp,
+                        lineHeight = 13.sp
                     )
                 }
             }
@@ -201,7 +211,7 @@ internal fun OverlayPanel(
             Modifier.fillMaxWidth()
                 .heightIn(max = contentHeight)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             if (menuVisible) {
                 onOcrCapture?.let { OverlayMenuItem("截", "截屏识别一次", it) }
@@ -249,13 +259,15 @@ internal fun OverlayPanel(
                             "回复建议",
                             color = colors.onSurface,
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
                         )
                         Spacer(Modifier.weight(1f))
                         Text(
                             if (replies != null) "${replies.size} 条候选" else "生成中",
                             color = colors.onSurfaceVariant,
-                            fontSize = 10.sp
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp
                         )
                     }
                     if (generatingReplies) OverlayHint("高情商回复生成中…")
@@ -271,14 +283,14 @@ internal fun OverlayPanel(
         // 底部操作区
         if (!menuVisible) {
             Column(
-                Modifier.fillMaxWidth().padding(top = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 OverlayAction(
                     label = if (analysis == null && error == null && replies == null) "分析当前对话" else "重新分析",
                     action = onManualAnalyze,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(0.68f),
                     enabled = !judging && !generatingReplies,
                     primary = true
                 )
@@ -286,7 +298,8 @@ internal fun OverlayPanel(
                     Text(
                         "填入后由您手动确认发送",
                         color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-                        fontSize = 9.5.sp
+                        fontSize = 9.5.sp,
+                        lineHeight = 13.sp
                     )
                 }
             }
@@ -298,14 +311,14 @@ internal fun OverlayPanel(
 @Composable
 private fun JudgmentCard(analysis: Analysis) {
     val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(14.dp)
     Column(
         Modifier.fillMaxWidth()
             .clip(shape)
             .background(colors.surfaceVariant.copy(alpha = 0.62f))
             .border(0.75.dp, colors.onSurface.copy(alpha = 0.18f), shape)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // 头部：危险等级与把握度
         Row(
@@ -321,7 +334,8 @@ private fun JudgmentCard(analysis: Analysis) {
                     "危险 $level/${it.maxLevel} · ${dangerWord(level)}",
                     color = dangerColor(level),
                     fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
                 )
             }
             Spacer(Modifier.weight(1f))
@@ -330,7 +344,8 @@ private fun JudgmentCard(analysis: Analysis) {
                     "把握 ${(it.confidence * 100).roundToInt()}%",
                     color = colors.primary,
                     fontWeight = FontWeight.Medium,
-                    fontSize = 10.5.sp
+                    fontSize = 10.5.sp,
+                    lineHeight = 16.sp
                 )
             }
         }
@@ -341,7 +356,8 @@ private fun JudgmentCard(analysis: Analysis) {
                 INTENT[it.choice] ?: it.choice,
                 color = colors.onSurface,
                 fontWeight = FontWeight.Bold,
-                fontSize = 12.5.sp
+                fontSize = 12.5.sp,
+                lineHeight = 18.sp
             )
         }
 
@@ -355,7 +371,8 @@ private fun JudgmentCard(analysis: Analysis) {
             Text(
                 bits.joinToString(" · "),
                 color = colors.onSurfaceVariant,
-                fontSize = 11.sp
+                fontSize = 11.sp,
+                lineHeight = 16.sp
             )
         }
 
@@ -366,7 +383,8 @@ private fun JudgmentCard(analysis: Analysis) {
                     "✓ 紧张氛围已缓解",
                     color = dangerColor(0),
                     fontWeight = FontWeight.Medium,
-                    fontSize = 10.5.sp
+                    fontSize = 10.5.sp,
+                    lineHeight = 15.sp
                 )
             }
         }
@@ -384,7 +402,7 @@ private fun ReplyCard(
     canFill: Boolean
 ) {
     val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(14.dp)
     val isTopRank = rank == 1
 
     Column(
@@ -399,55 +417,31 @@ private fun ReplyCard(
                 colors.onSurface.copy(alpha = if (isTopRank) 0.26f else 0.16f),
                 shape
             )
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(horizontal = 9.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        // 回复文本
         Text(
             reply.text,
             color = colors.onSurface,
             fontSize = 12.5.sp,
-            lineHeight = 17.5.sp,
+            lineHeight = 18.sp,
             fontWeight = if (isTopRank) FontWeight.Medium else FontWeight.Normal
         )
-
-        // 底部操作栏：序号/置信度 + [复制] + [填入]
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            // 推荐 Badge / 序号
-            Box(
-                Modifier.clip(RoundedCornerShape(4.dp))
-                    .background(colors.primary.copy(alpha = if (isTopRank) 0.18f else 0.08f))
-                    .padding(horizontal = 5.dp, vertical = 1.5.dp)
-            ) {
-                Text(
-                    if (isTopRank) "推荐 · #1 · ${(reply.prob * 100).roundToInt()}%"
-                    else "#$rank · ${(reply.prob * 100).roundToInt()}%",
-                    color = colors.primary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 10.sp
-                )
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            // 复制胶囊按钮
-            ReplyChipButton(
-                label = "复制",
-                onClick = { onCopy(reply.text) },
-                primary = false,
-                enabled = true
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                if (isTopRank) "推荐 · #1 · ${(reply.prob * 100).roundToInt()}%"
+                else "#$rank · ${(reply.prob * 100).roundToInt()}%",
+                modifier = Modifier.weight(1f),
+                color = colors.primary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-
-            // 填入胶囊按钮
-            ReplyChipButton(
-                label = "填入",
-                onClick = { onFill(reply.text) },
-                primary = true,
-                enabled = canFill
-            )
+            ReplyChipButton("复制", { onCopy(reply.text) }, false, true)
+            ReplyChipButton("填入", { onFill(reply.text) }, true, canFill)
         }
     }
 }
@@ -461,18 +455,20 @@ private fun ReplyChipButton(
     enabled: Boolean
 ) {
     val colors = MaterialTheme.colorScheme
-    val modifier = Modifier.heightIn(min = 32.dp)
-    val padding = ButtonDefaults.ContentPadding
-    if (primary) {
-        Button(onClick = onClick, enabled = enabled, modifier = modifier,
-            contentPadding = padding,
-            colors = ButtonDefaults.buttonColors(containerColor = colors.primary)) {
-            Text(label, fontSize = 11.sp)
-        }
-    } else {
-        OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier,
-            contentPadding = padding) {
-            Text(label, fontSize = 11.sp)
+    val shape = RoundedCornerShape(8.dp)
+    Box(Modifier.width(56.dp).heightIn(min = 30.dp)
+        .clip(shape).clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().heightIn(min = 26.dp).clip(shape)
+            .background(if (primary) colors.primary.copy(alpha = if (enabled) 1f else 0.12f)
+                else colors.surfaceContainer)
+            .border(1.dp, if (primary) Color.Transparent else colors.outline.copy(alpha = 0.32f), shape)
+            .padding(vertical = 3.dp),
+            contentAlignment = Alignment.Center) {
+            Text(label, color = if (!enabled) colors.onSurfaceVariant
+                else if (primary) colors.onPrimary else colors.onSurface,
+                fontSize = 11.sp, lineHeight = 14.sp,
+                fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
@@ -486,15 +482,20 @@ private fun OverlayAction(
     primary: Boolean = false
 ) {
     val colors = MaterialTheme.colorScheme
-    val actionModifier = modifier.heightIn(min = 40.dp)
-    if (primary) {
-        Button(onClick = action, enabled = enabled, modifier = actionModifier,
-            colors = ButtonDefaults.buttonColors(containerColor = colors.primary)) {
-            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        }
-    } else {
-        OutlinedButton(onClick = action, enabled = enabled, modifier = actionModifier) {
-            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    val shape = RoundedCornerShape(11.dp)
+    Box(modifier.heightIn(min = 34.dp).clip(shape)
+        .clickable(enabled = enabled, role = Role.Button, onClick = action),
+        contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().heightIn(min = 30.dp).clip(shape)
+            .background(if (primary) colors.primary.copy(alpha = if (enabled) 1f else 0.12f)
+                else colors.surfaceContainer)
+            .border(1.dp, if (primary) Color.Transparent else colors.outline.copy(alpha = 0.32f), shape)
+            .padding(vertical = 3.dp),
+            contentAlignment = Alignment.Center) {
+            Text(label, color = if (!enabled) colors.onSurfaceVariant
+                else if (primary) colors.onPrimary else colors.onSurface,
+                fontSize = 12.sp, lineHeight = 16.sp,
+                fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
 }
@@ -520,13 +521,15 @@ private fun OverlayHint(text: String) {
     Text(
         text,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        fontSize = 10.5.sp
+        fontSize = 10.5.sp,
+        lineHeight = 15.sp
     )
 }
 
 @Composable
-private fun BrandIcon(size: Dp, color: Color) {
-    Icon(AppIcons.Brand, contentDescription = null, modifier = Modifier.size(size), tint = color)
+private fun BrandIcon(size: Dp) {
+    Icon(painterResource(R.drawable.ic_overlay_route), contentDescription = null,
+        modifier = Modifier.size(size), tint = MaterialTheme.colorScheme.onPrimary)
 }
 
 private enum class HeaderSymbol { MENU, BACK, MINIMIZE }
